@@ -13,6 +13,7 @@ An approved, implementation-ready FocusFlow MVP definition — clarified `docs/p
 - Refer by name: in narration and Decisions-so-far, refer to maps/tickets by title with link inside the name, never by bare id/number/slug.
 - Skills: `wayfinder` drives the map. Where available, use `grilling` + `domain-modeling` for HITL decisions, `research` for AFK fact-finding, `prototype` for cheap concrete artifacts. This repo currently only has `wayfinder` + `setup-matt-pocock-skills` installed — work HITL via conversation when those skills are absent.
 - Tracker: local-markdown — map is `.scratch/focusflow-mvp/map.md`, tickets are `.scratch/focusflow-mvp/issues/NN-<slug>.md`. `Blocked by:` wires the frontier; `Status:` is `open` / `claimed` / `resolved`; `Type:` is `research` / `prototype` / `grilling` / `task`.
+- Build handoff: implementation issues live in `.scratch/mvp-build/issues/` (01–20, Milestones 1–5, `Depends on:` ordered) with `.scratch/mvp-build/spec.md` as the spec pointer. The map stays decisions-only.
 - Standing preferences for this effort: small prioritized question groups, one decision at a time, each with options + trade-offs + recommendation; update `PRODUCT_SPEC.md` after product clarification; no implementation until destination, architecture, and first milestone are approved.
 
 ## Decisions so far
