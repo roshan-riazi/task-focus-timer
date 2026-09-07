@@ -1,0 +1,6 @@
+# Gitleaks config — fail-closed secret scanning (issue 02).
+# The default ruleset already covers AWS keys, private keys, generic
+# high-entropy secrets, etc. This file pins the behaviour CI relies on:
+# every commit and PR is scanned, and any finding fails the gate.
+[extend]
+useDefault = true
