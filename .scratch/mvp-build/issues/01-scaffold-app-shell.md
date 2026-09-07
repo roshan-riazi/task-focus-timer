@@ -32,3 +32,7 @@ default + remembered light toggle, health route skeleton.
   health skeleton omits DB reachability by design (lands in 03/06).
   `skills-lock.json` + `.agents/skills/tdd/` changes are pre-existing
   environment noise, left uncommitted.
+- 2026-09-07: code-review (subagents) follow-ups fixed: added
+  `public/.gitkeep` so the Dockerfile `COPY --from=builder /app/public`
+  step has a source dir; softened `.env.example` fail-closed wording
+  (startup enforcement lands with 03-05 DB/auth wiring).
