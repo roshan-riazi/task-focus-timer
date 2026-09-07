@@ -56,3 +56,15 @@ test DB, Vitest, Playwright, Gitleaks — fail-closed. Dependabot on.
   type-check failure), `middleware.ts` pulls node:crypto into Edge runtime
   (build warning). No local Postgres/Docker here, so migrate-from-zero and
   browser e2e first run in CI.
+- 2026-09-08 close-out: owner confirmed personal repo (not org) → dropped
+  GITLEAKS_LICENSE from the gitleaks job (personal repos scan without it).
+  The concurrent agents fixed their side meanwhile (`request-id` mismatch
+  resolved, tree converged): full verification green — `typecheck` clean,
+  `lint` clean, `pnpm audit` clean (exit 0), Vitest 61 passed / 3 skipped
+  (DB-gated constraints skip without DATABASE_URL) / 0 failed,
+  `tests/ci-gates.test.ts` 11/11, `next build` passes (Edge node:crypto
+  trace is a non-fatal warning), gitleaks 8.30.1 with auto-detected
+  `gitleaks.toml`: 0 findings in tracked files (22 hits all in gitignored
+  `.next/` build output). Remaining human setup: repo Settings → require
+  `ci-required` + all gate checks on `main` (no remote configured here, so
+  the canary-push validation and first CI run happen on push).

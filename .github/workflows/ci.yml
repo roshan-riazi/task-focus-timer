@@ -174,10 +174,9 @@ jobs:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
         env:
+          # Personal repo: no GITLEAKS_LICENSE needed (org repos require one,
+          # free at gitleaks.io — add as a secret if this ever moves to an org).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Required for organization repos (free at gitleaks.io); personal
-          # repos scan without it. Absent on an org repo, the gate fails loud.
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   required:
     name: ci-required
