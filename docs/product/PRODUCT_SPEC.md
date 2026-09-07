@@ -229,7 +229,15 @@ Rules:
 - Login, registration, and password-reset endpoints must be rate-limited.
 - Account deletion requires explicit confirmation.
 - A managed authentication provider is acceptable and preferred if it reduces
-  security risk and implementation cost.
+  security risk and implementation cost (locked: managed preferred; exact
+  vendor chosen in architecture).
+- Email verification is sent at registration but does not block first use;
+  unverified users may create tasks and run timers with a verification nag
+  until verified.
+- Completed tasks are retained indefinitely until the user deletes them or
+  deletes the account; deleting a task preserves its session snapshots.
+- Account deletion purges live personal data immediately on confirmation;
+  backups age out within 30 days per the published retention policy.
 
 ## 8.2 Task management
 
@@ -337,13 +345,21 @@ Rules:
   change, navigation, and important timer actions.
 - WebSockets are not required for the MVP.
 - A timer that expires while the application is closed is reconciled on the
-  next server interaction.
+  next server interaction: if returned within 60 minutes past `expected_end_at`,
+  it auto-finalizes as completed exactly once; if more than 60 minutes past,
+  the client prompts for confirmation (`Complete` finalizes as completed with
+  actual duration bounded by planned duration; `Discard` finalizes as
+  cancelled with no completed minutes and no cycle increment) and finalizes
+  only on explicit user action.
 - Reconciliation must create no duplicate session or analytics entries.
 
 ## 8.5 Focus-cycle rules
 
-- Completing a focus interval increments the focus-cycle count.
-- Cancelling a focus interval does not increment it.
+- Only a focus interval that reaches its expected end increments the
+  focus-cycle count. `Complete early` finalizes the interval as completed and
+  records actual elapsed active time for history/analytics, but does not
+  increment the focus-cycle count.
+- Cancelling (including `Discard` from expired-confirmation) does not increment it.
 - After the configured number of completed focus intervals, the next proposed
   break is long.
 - Otherwise, the next proposed break is short.
@@ -409,14 +425,16 @@ Required filters:
 - Focus only.
 - All interval types.
 
-History is read-only in the MVP and must be paginated.
+History is read-only in the MVP and must be paginated. Short and long breaks
+are persisted in history by default; `Focus only` / `All interval types`
+filters control their display.
 
 ## 8.9 Individual analytics
 
 Required periods:
 
-- Today.
-- Last seven days.
+- Today (user's local calendar day).
+- Last seven days (rolling 7 local calendar days including today, not a calendar week).
 
 Required metrics:
 
@@ -453,8 +471,10 @@ Rules:
   representation of those records.
 - Deleted tasks remain reportable through session snapshots.
 - Empty analytics must have an explanatory empty state.
-- A daily bar chart and ranked task/category lists are sufficient.
+- A daily bar chart and ranked task/category lists are sufficient (locked for MVP).
 - Every chart must have an accessible textual or tabular equivalent.
+- MVP is English-only with i18n-ready strings (no multi-language translation pipeline).
+- Product name locked as FocusFlow for MVP with minimal visual identity; full branding deferred post-MVP.
 
 ---
 
@@ -733,9 +753,9 @@ Layouts must support viewport widths from approximately 320 pixels upward.
 - Health-check endpoint where deployment architecture permits it.
 - Automated database backups.
 - Production migration strategy.
-- Product events for registration, task creation, timer start, timer
-  completion, timer cancellation, and analytics viewing.
-- No user-authored task content in telemetry.
+- No product-analytics telemetry in the MVP per delivery constraint; suggested
+  §4 metrics, if needed, are server-side DB-derived aggregates, not client events.
+- No user-authored task content in logs, error reports, or telemetry.
 - Recovery behavior for expired or interrupted timers must be tested.
 
 ---
