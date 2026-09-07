@@ -138,6 +138,13 @@ describe("CI gates (issue 02, slice 3: playwright + gitleaks + dependabot)", () 
     expect(vitestJob).toContain("prisma migrate deploy");
   });
 
+  it("generates the Prisma client before typechecking (fresh installs have none)", () => {
+    // v7 does not auto-generate on install: without this step the typecheck
+    // job fails on `lib/db.ts` with TS2305 (proven by CI run 34171055167).
+    const typecheckJob = jobBlock(readWorkflow(), "typecheck");
+    expect(typecheckJob).toContain("prisma generate");
+  });
+
   it("runs a Gitleaks secret-scan gate with no escape hatches", () => {
     const workflow = readWorkflow();
     expect(workflow).toContain("gitleaks");

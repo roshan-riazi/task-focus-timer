@@ -1,5 +1,9 @@
-import { randomUUID } from "node:crypto";
-
+/**
+ * Web Crypto UUID: `middleware.ts` runs in the Edge runtime, where
+ * `node:crypto` is unavailable (production `next start` hard-fails every
+ * request with "Native module not found"). The global `crypto.randomUUID`
+ * works in Edge and Node 19+ alike (engines pin Node 22).
+ */
 export const REQUEST_ID_HEADER = "x-request-id";
 
 const MAX_REQUEST_ID_LENGTH = 128;
@@ -16,5 +20,5 @@ export function ensureRequestId(incoming: string | null | undefined): string {
       return clean.slice(0, MAX_REQUEST_ID_LENGTH);
     }
   }
-  return randomUUID();
+  return crypto.randomUUID();
 }
