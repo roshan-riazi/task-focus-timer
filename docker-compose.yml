@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgres://focusflow:focusflow@db:5432/focusflow"
+      AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET in your shell or a .env file — never commit secrets.}"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: focusflow
+      POSTGRES_PASSWORD: focusflow
+      POSTGRES_DB: focusflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - focusflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U focusflow -d focusflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  focusflow-pgdata:
