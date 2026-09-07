@@ -60,6 +60,10 @@ Timer:
   minutes / Discard → cancelled, no minutes, no cycle: e2e + API.
 - Double-complete (same key, concurrent) → finalized once, cycle +1 max: API
   concurrency test.
+- Alarm mapping: preset key + volume persist via settings API; unit tests assert
+  each preset maps to its focus/break tone pattern and out-of-range volume is
+  rejected by validation. Audible check (correct tone, volume honored) is a
+  manual M3 exit item, not automated.
 - Complete-early → completed minutes counted, cycle NOT incremented: API.
 - Breaks persisted + filterable; settings apply to new intervals only: API + e2e.
 

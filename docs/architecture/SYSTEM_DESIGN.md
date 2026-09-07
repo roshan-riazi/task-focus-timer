@@ -32,6 +32,11 @@ Dockerfile + docker-compose.yml (app + local Postgres)
 Server components for reads; client components only where interactivity demands
 (timer display tick, quick-add, dialogs). Client ticks never author elapsed time.
 
+Styling: Tailwind CSS + shadcn/ui on Radix primitives (locked with the UI
+prototype). Dark theme default with remembered light toggle; both themes meet
+contrast requirements. The focus route renders tasks + timer only; history,
+analytics, and settings are separate routes.
+
 ## 3. Authentication (Auth.js v5, DB sessions)
 
 - Email + password (8-char min unless provider stronger) + verification email
@@ -64,6 +69,8 @@ running|paused --cancel--> cancelled        # incl. Discard from confirm dialog
 - Stored per session: `started_at`, `expected_end_at`, `paused_at`,
   `accumulated_pause_seconds`, planned + actual durations, completion /
   cancellation stamps. Remaining time is always derived from timestamps.
+  The timer readout sits inside an SVG progress ring showing elapsed share,
+  computed from the same timestamps and exposed as a progressbar value.
 - Pause math: pausing freezes accrual (`paused_at` set); resume adds
   `now - paused_at` to `accumulated_pause_seconds` and shifts `expected_end_at`
   forward by the same amount. Paused time never counts toward actual duration.
@@ -76,6 +83,11 @@ running|paused --cancel--> cancelled        # incl. Discard from confirm dialog
 - Expiry while away: within 60 min past `expected_end_at` → auto-finalize as
   completed on next contact; beyond 60 min → client shows Complete/Discard
   confirm, then finalizes once. No duplicate history/analytics rows ever.
+- Alarms: synthesized in-app with WebAudio (no audio files, no licensing);
+  preset key + volume come from user settings, focus-end and break-end use
+  distinct patterns. Audio unlock needs a prior user gesture (the start/confirm
+  click provides it); when the tab is hidden at expiry, the notification is
+  the reliable channel and sound plays on return if still enabled.
 - Settings edits apply to newly created intervals only.
 
 ## 5. Tasks
@@ -155,3 +167,19 @@ running|paused --cancel--> cancelled        # incl. Discard from confirm dialog
 - Milestone 3: §4 timer lifecycle + reconcile + sounds/notifications.
 - Milestone 4: §7 history/analytics + a11y equivalents + DST tests.
 - Milestone 5: §§8–9 audit, security review, backups, deletion flow, release.
+
+## 12. Scaffolding policy (locked 2026-09-07)
+
+No wholesale boilerplate adoption: every evaluated starter contradicts at
+least one locked decision (ORM, auth vendor, i18n, test stack, or
+client-only timers). Scaffold fresh (`create-next-app` + Tailwind +
+shadcn/ui + Prisma + Auth.js) and borrow selectively:
+
+- `ixartz/Next-js-Boilerplate` (MIT, 13k stars): structural reference for
+  GHA workflows, Vitest/Playwright config, Tailwind + Sentry wiring. Do not
+  take its Drizzle/Clerk/next-intl choices.
+- `prisma/prisma-examples: orm/authjs-nextjs` + official Prisma Auth.js
+  guide: canonical Auth.js v5 + Prisma wiring reference.
+- `srefsland/pomodoro-timer` (MIT): same test stack; timer-UX ideas + test
+  config shape only (client-side, no server).
+- `shadcn/ui` (MIT): component source, installed via CLI at M1.

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FocusFlow — settings (throwaway mock)</title>
+<style>
+  :root{--paper:#ffffff;--ink:#1e293b;--muted:#64748b;--line:#e2e8f0;--accent:#166534;--accent-ink:#fff;--wash:#f1f8f2}
+  [data-theme="dark"]{--paper:#0f172a;--ink:#e2e8f0;--muted:#94a3b8;--line:#334155;--accent:#4ade80;--accent-ink:#052e16;--wash:#052e16}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5}
+  header.top{border-bottom:1px solid var(--line);padding:.75rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+  nav ul{display:flex;gap:.25rem;list-style:none;margin:0;padding:0;flex-wrap:wrap}
+  nav a{padding:.4rem .7rem;border-radius:.4rem;text-decoration:none;color:var(--ink)}
+  nav a[aria-current="page"]{background:var(--wash);color:var(--accent);font-weight:600}
+  .spacer{flex:1}
+  main{max-width:44rem;margin:0 auto;padding:1rem}
+  label{display:block;margin:.75rem 0}
+  input,select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:.4rem;background:var(--paper);color:var(--ink)}
+  button{font:inherit;padding:.5rem .9rem;border-radius:.45rem;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .cat{font-size:.75rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top"><strong>FocusFlow</strong>
+  <nav aria-label="Primary"><ul>
+    <li><a href="workspace.html">Focus</a></li>
+    <li><a href="history.html">History</a></li>
+    <li><a href="analytics.html">Analytics</a></li>
+    <li><a href="settings.html" aria-current="page">Settings</a></li>
+  </ul></nav><span class="spacer"></span>
+  <button type="button" id="theme">Light theme</button>
+</header>
+<main>
+  <h1>Settings</h1>
+  <form>
+    <label>Focus duration (minutes) <input type="number" value="25" min="1" max="120"></label>
+    <label>Short break (minutes) <input type="number" value="5" min="1" max="60"></label>
+    <label>Long break (minutes) <input type="number" value="15" min="1" max="60"></label>
+    <label>Focus intervals before long break <input type="number" value="4" min="1" max="10"></label>
+    <label><input type="checkbox"> Start breaks automatically</label>
+    <label><input type="checkbox"> Start focus intervals automatically</label>
+    <label><input type="checkbox" checked> Sound</label>
+    <label>Alarm sound <select><option>Chime</option><option>Bell</option><option>Pulse</option><option>Gong</option></select>
+    <button type="button">Preview</button></label>
+    <label>Volume <input type="range" min="0" max="100" value="80"></label>
+    <label>Timezone <select><option>Europe/Berlin</option><option>UTC</option></select></label>
+    <p><button type="submit" class="primary">Save settings</button></p>
+  </form>
+  <p class="cat">Edits apply to newly created intervals only — never a running or paused one.</p>
+  <h2>Danger zone</h2>
+  <p><button type="button">Delete account and all data…</button></p>
+  <p class="cat">Requires explicit confirmation. Live data is purged immediately; backups expire within 30 days.</p>
+</main>
+<script>
+  const root=document.documentElement,btn=document.getElementById('theme');
+  root.dataset.theme=localStorage.getItem('ff-theme')||'dark';
+  const label=()=>btn.textContent=root.dataset.theme==='dark'?'Light theme':'Dark theme';label();
+  btn.addEventListener('click',()=>{root.dataset.theme=root.dataset.theme==='dark'?'light':'dark';localStorage.setItem('ff-theme',root.dataset.theme);label();});
+</script>
+</body>
+</html>

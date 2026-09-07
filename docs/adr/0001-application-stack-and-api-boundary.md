@@ -18,6 +18,8 @@ boundary](../.scratch/focusflow-mvp/issues/06-choose-application-stack-and-api-b
 - Toolchain: pnpm + Node.js 22 LTS.
 - Validation: Zod on every external input / API boundary.
 - Charts: native SVG + HTML tables; no chart library.
+- Styling: Tailwind CSS + shadcn/ui on Radix primitives (locked 2026-09-07
+  with the UI prototype; dark theme default, remembered light toggle).
 
 ## Consequences
 

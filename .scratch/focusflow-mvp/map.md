@@ -27,6 +27,8 @@ An approved, implementation-ready FocusFlow MVP definition — clarified `docs/p
 - [Choose application stack and API boundary](issues/06-choose-application-stack-and-api-boundary.md): Next.js strict TS, REST routes, pnpm + Node 22, Zod, native SVG + tables; ADRs pending.
 - [Choose data, auth, deployment foundation](issues/07-choose-data-auth-deployment-foundation.md): Neon + Prisma, Auth.js v5 DB sessions, Vercel primary + portable Docker for VPS/Debian, lazy reconcile no workers.
 - [Choose quality and operations backbone](issues/08-choose-quality-operations-backbone.md): Vitest + Playwright + Testing Library; logs + scrubbed errors, no analytics; GHA + Dependabot + Gitleaks; DB rate limit + hardened cookies + Neon backups + /api/health + migrate deploy.
+- [Prototype the focus workspace UI](issues/09-prototype-workspace-ui.md): focus page tasks + timer only (rest on own pages); dark default + light toggle; timer readout in SVG progress ring.
+- [Decide alarm sound options](issues/10-decide-alarm-sound-options.md): synthesized presets (default chime) + preview; volume 0–100; distinct focus/break tones.
 
 ## Not yet specified
 

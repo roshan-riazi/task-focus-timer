@@ -331,7 +331,10 @@ The server-authoritative timer record must include:
 - Actual active duration.
 
 The displayed remaining time must be calculated from timestamps. Client-side
-ticks exist only to update the visual display.
+ticks exist only to update the visual display. The timer display must also
+show progress toward the expected end (e.g. a progress ring), derived from
+the same timestamps, and expose it programmatically (e.g. progressbar role
+with current value) without announcing every tick.
 
 Rules:
 
@@ -379,7 +382,9 @@ When an interval reaches its expected end:
 
 - It is finalized exactly once.
 - Its actual duration is recorded.
-- A sound plays if enabled and allowed.
+- The selected alarm preset plays at the set volume if sound is enabled and
+  allowed: a focus tone when a focus interval ends, a distinct break tone
+  when a break ends. Sounds are synthesized in-app (no audio assets).
 - A browser notification appears if enabled and permitted.
 - History reflects the new record.
 - Analytics reflect completed focus intervals.
@@ -395,7 +400,8 @@ Users can configure:
 - Number of focus intervals before a long break.
 - Automatic break start.
 - Automatic focus start.
-- Sound.
+- Sound on/off, alarm preset (one of the built-in synthesized presets, with
+  in-settings preview), and volume (0–100).
 - Browser notifications.
 - Timezone.
 
@@ -502,6 +508,13 @@ Rules:
 
 ## 9.3 Workspace layout
 
+The focus page holds the task list and the timer only. History, analytics,
+and settings live on their own pages (never embedded in the focus view), so
+the focus view stays calm.
+
+Dark theme is the default, with a user-toggleable light theme; the choice is
+remembered. Both themes meet the §12.3 contrast requirements.
+
 Desktop:
 
 - Task list and quick-add control on the left.
@@ -546,6 +559,8 @@ user_settings
 - auto_start_breaks: boolean, default false
 - auto_start_focus: boolean, default false
 - sound_enabled: boolean, default true
+- sound_preset: short text key of the built-in synthesized preset, default `chime`
+- sound_volume: integer 0–100, default 80
 - notifications_enabled: boolean, default false
 - updated_at: UTC timestamp
 ```
