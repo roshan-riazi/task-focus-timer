@@ -1,4 +1,4 @@
-Status: done
+Status: in_review
 Milestone: 1
 Depends on: 01
 
@@ -48,8 +48,15 @@ retention vs the 30-day backup-expiry copy.
     event review stay manual pre-beta gates; `toPublicError` kept as the
     SYSTEM_DESIGN §6 envelope seam for upcoming API issues; 3s health timeout
     is deliberate reliability policy.
-  - Neon retention vs 30-day copy: docs caps are Free 6h (1 GB), Launch ≤7d,
-    Scale ≤30d — the published 30-day backup-expiry copy requires the Scale
-    plan at a 30-day history window, or pg_dump-to-remote artifacts with
-    30-day retention. Recorded in RUNBOOK §4; dashboard re-confirm + restore
-    drill stay pre-beta manual items (RUNBOOK §§4,7).
+   - Neon retention vs 30-day copy: docs caps are Free 6h (1 GB), Launch ≤7d,
+     Scale ≤30d — the published 30-day backup-expiry copy requires the Scale
+     plan at a 30-day history window, or pg_dump-to-remote artifacts with
+     30-day retention. Recorded in RUNBOOK §4; dashboard re-confirm + restore
+     drill stay pre-beta manual items (RUNBOOK §§4,7).
+- 2026-09-08: status returned to `in_review` (was `done`): this issue's own
+  Validation requires a **manual Sentry event review before beta**, and its
+  acceptance assumes scrubbed Sentry errors, but no Sentry SDK is wired yet
+  (`sentryBeforeSend` is unit-tested, not live). Everything CI-provable is
+  green (health states, canary-scrub, e2e health envelope). Close-out needs:
+  (1) wire the SDK with `beforeSend`, (2) one manual scrubbed-event review,
+  or an explicit decision re-scoping `done` to pipeline-only.
