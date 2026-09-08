@@ -1,4 +1,4 @@
-Status: in_review
+Status: done
 Milestone: 1
 Depends on: 01
 
@@ -68,3 +68,14 @@ test DB, Vitest, Playwright, Gitleaks — fail-closed. Dependabot on.
   `.next/` build output). Remaining human setup: repo Settings → require
   `ci-required` + all gate checks on `main` (no remote configured here, so
   the canary-push validation and first CI run happen on push).
+- 2026-09-08 GitHub done: repo `roshan-riazi/task-focus-timer` created
+  (public — required checks are paywalled on private/free), both branches
+  pushed, branch protection on `main` (strict + all 8 contexts, admins
+  included). Validation: canary PR #1 (deliberate type error) → CI failed
+  (typecheck + playwright-build) and `mergeable_state: blocked`; closed
+  unmerged. Live CI also caught two real gaps, fixed in `7eb82be`:
+  typecheck job now runs `prisma generate` (v7 has no install-time
+  generation), and `lib/request-id` uses Web Crypto (Edge runtime has no
+  `node:crypto` — production start failed every request). PR #2:
+  8/8 jobs green (run 34171839970), merged as 0afb7d2; post-merge `main`
+  run 34172547521 also green. Validation satisfied, CI green, merged.
