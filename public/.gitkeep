@@ -1,0 +1,3 @@
+Static assets go here (favicons, og images, etc.). This placeholder keeps
+the directory — and the Dockerfile's `COPY --from=builder /app/public`
+step — working until real assets land.

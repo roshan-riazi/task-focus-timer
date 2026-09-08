@@ -1,0 +1,113 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TaskStatus {
+  active
+  completed
+  archived
+}
+
+enum IntervalType {
+  focus
+  short_break
+  long_break
+}
+
+enum SessionStatus {
+  running
+  paused
+  completed
+  cancelled
+}
+
+model User {
+  id         String           @id @default(uuid()) @db.Uuid
+  email      String           @unique @db.VarChar(255)
+  timezone   String           @db.VarChar(64)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  settings   UserSettings?
+  tasks      Task[]
+  sessions   TimerSession[]
+  cycleState FocusCycleState?
+
+  @@map("users")
+}
+
+model UserSettings {
+  userId                   String   @id @map("user_id") @db.Uuid
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  focusDurationSeconds     Int      @default(1500) @map("focus_duration_seconds")
+  shortBreakSeconds        Int      @default(300) @map("short_break_seconds")
+  longBreakSeconds         Int      @default(900) @map("long_break_seconds")
+  intervalsBeforeLongBreak Int      @default(4) @map("intervals_before_long_break")
+  autoStartBreaks          Boolean  @default(false) @map("auto_start_breaks")
+  autoStartFocus           Boolean  @default(false) @map("auto_start_focus")
+  soundEnabled             Boolean  @default(true) @map("sound_enabled")
+  soundPreset              String   @default("chime") @map("sound_preset") @db.VarChar(32)
+  soundVolume              Int      @default(80) @map("sound_volume")
+  notificationsEnabled     Boolean  @default(false) @map("notifications_enabled")
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_settings")
+}
+
+model Task {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String         @db.VarChar(200)
+  notes       String?        @db.VarChar(2000)
+  category    String?        @db.VarChar(50)
+  status      TaskStatus     @default(active)
+  position    Float
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime?      @map("completed_at") @db.Timestamptz(6)
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  sessions    TimerSession[]
+
+  @@index([userId, status, position], map: "tasks_user_status_position_idx")
+  @@map("tasks")
+}
+
+model TimerSession {
+  id                      String        @id @default(uuid()) @db.Uuid
+  userId                  String        @map("user_id") @db.Uuid
+  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId                  String?       @map("task_id") @db.Uuid
+  task                    Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskTitleSnapshot       String?       @map("task_title_snapshot") @db.VarChar(200)
+  categorySnapshot        String?       @map("category_snapshot") @db.VarChar(50)
+  intervalType            IntervalType  @map("interval_type")
+  status                  SessionStatus @default(running)
+  plannedDurationSeconds  Int           @map("planned_duration_seconds")
+  actualDurationSeconds   Int?          @map("actual_duration_seconds")
+  startedAt               DateTime      @map("started_at") @db.Timestamptz(6)
+  expectedEndAt           DateTime      @map("expected_end_at") @db.Timestamptz(6)
+  pausedAt                DateTime?     @map("paused_at") @db.Timestamptz(6)
+  accumulatedPauseSeconds Int           @default(0) @map("accumulated_pause_seconds")
+  completedAt             DateTime?     @map("completed_at") @db.Timestamptz(6)
+  cancelledAt             DateTime?     @map("cancelled_at") @db.Timestamptz(6)
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId], map: "timer_sessions_one_active_per_user", where: raw("\"status\" IN ('running', 'paused')"))
+  @@index([userId, startedAt], map: "timer_sessions_user_started_idx")
+  @@map("timer_sessions")
+}
+
+model FocusCycleState {
+  userId              String   @id @map("user_id") @db.Uuid
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completedFocusCount Int      @default(0) @map("completed_focus_count")
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("focus_cycle_state")
+}

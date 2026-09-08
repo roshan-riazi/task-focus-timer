@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# env (never commit secrets; .env.example is the template)
+.env*
+!.env.example
+
+# misc
+*.log
+.DS_Store

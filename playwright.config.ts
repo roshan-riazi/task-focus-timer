@@ -1,0 +1,29 @@
+import { defineConfig, devices } from "@playwright/test";
+
+// E2E backbone for issue 02 (CI gates). The smoke spec exercises only the
+// public HTTP seam (`/` shell + `/api/health`); journey coverage lands with
+// the feature issues per TEST_STRATEGY §1. Browser matrix per §4: latest
+// Chromium + Firefox + WebKit on every run.
+export default defineConfig({
+  testDir: "./e2e",
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: process.env.CI ? "github" : "list",
+  use: {
+    baseURL: "http://127.0.0.1:3000",
+    trace: "on-first-retry",
+  },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
+  webServer: {
+    command: "pnpm build && pnpm start",
+    url: "http://127.0.0.1:3000/api/health",
+    reuseExistingServer: !process.env.CI,
+    timeout: 180 * 1000,
+  },
+});

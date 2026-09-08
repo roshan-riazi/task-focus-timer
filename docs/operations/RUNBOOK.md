@@ -44,6 +44,11 @@ closed, no defaults for secrets).
 - Neon automated backups are the primary (verify retention covers the
   published 30-day expiry story before beta). VPS path additionally keeps
   scheduled `pg_dump` artifacts with the same 30-day expiry.
+- Neon history-window caps (re-confirm in Console → Settings → Instant
+  restore before beta): Free 6h (1 GB cap), Launch ≤7d, Scale ≤30d. The
+  published 30-day backup-expiry copy requires the Scale plan at a 30-day
+  window, or `pg_dump`-to-remote artifacts with 30-day retention —
+  Free/Launch point-in-time history alone does NOT cover it (issue 06).
 - Drill (pre-beta, then quarterly): restore into an isolated database, run
   migration check + history/analytics spot queries, record evidence
   (date, actor, result). Never restore over live data as a test.
