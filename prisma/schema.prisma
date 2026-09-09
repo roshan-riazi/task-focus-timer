@@ -29,13 +29,26 @@ enum SessionStatus {
 model User {
   id         String           @id @default(uuid()) @db.Uuid
   email      String           @unique @db.VarChar(255)
-  timezone   String           @db.VarChar(64)
+  timezone   String           @default("UTC") @db.VarChar(64)
+  // Issue 04 (credentials): scrypt/bcrypt hash, null for future
+  // passwordless-only accounts. The service layer requires it non-null
+  // for credentials users; emailVerified drives the verification nag.
+  name          String?    @db.VarChar(255)
+  image         String?
+  passwordHash  String?    @map("password_hash") @db.Text
+  emailVerified DateTime?  @map("email_verified") @db.Timestamptz(6)
   createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   settings   UserSettings?
   tasks      Task[]
-  sessions   TimerSession[]
+  timerSessions TimerSession[]
   cycleState FocusCycleState?
+  // Auth.js v5 adapter relations (DB sessions, ADR-0002). `sessions` here
+  // is the adapter Session model; timer rows live under `timerSessions`.
+  accounts               Account[]
+  sessions               Session[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 
   @@map("users")
 }
@@ -71,7 +84,7 @@ model Task {
   updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   completedAt DateTime?      @map("completed_at") @db.Timestamptz(6)
   deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
-  sessions    TimerSession[]
+  timerSessions TimerSession[]
 
   @@index([userId, status, position], map: "tasks_user_status_position_idx")
   @@map("tasks")
@@ -110,4 +123,79 @@ model FocusCycleState {
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("focus_cycle_state")
+}
+
+// Auth.js v5 adapter tables (issue 04, ADR-0002: database sessions keep the
+// single-DB purge story). Shapes follow the Auth.js Prisma reference so
+// `@auth/prisma-adapter` works unmodified; table names are app-prefixed to
+// avoid confusion with domain tables. Credentials themselves (hashing,
+// verification, reset) are app-managed — Auth.js documents the Credentials
+// provider as database-less by design — while sessions live here.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime @db.Timestamptz(6)
+
+  @@unique([identifier, token])
+  @@map("auth_verification_tokens")
+}
+
+// Single-use email-flow tokens (issue 04). Only SHA-256 hashes are stored;
+// raw tokens travel by email only. One live token per user per flow: minting
+// replaces unconsumed predecessors.
+model EmailVerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "email_verification_tokens_user_idx")
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "password_reset_tokens_user_idx")
+  @@map("password_reset_tokens")
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 describe("lib/db prisma wiring", () => {
-  it("exposes a singleton client with all five delegates", async () => {
+  it("exposes a singleton client with all delegates", async () => {
     process.env.DATABASE_URL ??=
       "postgres://focusflow:focusflow@localhost:5432/focusflow";
     const { db } = await import("@/lib/db");
@@ -11,6 +11,12 @@ describe("lib/db prisma wiring", () => {
       "task",
       "timerSession",
       "focusCycleState",
+      // Issue 04: Auth.js adapter + email-token delegates.
+      "account",
+      "session",
+      "verificationToken",
+      "emailVerificationToken",
+      "passwordResetToken",
     ]) {
       expect(db).toHaveProperty(delegate);
     }
