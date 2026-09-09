@@ -17,6 +17,8 @@ describe("lib/db prisma wiring", () => {
       "verificationToken",
       "emailVerificationToken",
       "passwordResetToken",
+      // Issue 05: DB-backed rate-limit hits.
+      "rateLimitHit",
     ]) {
       expect(db).toHaveProperty(delegate);
     }

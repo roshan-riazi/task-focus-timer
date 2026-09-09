@@ -80,7 +80,15 @@ export function createPrismaPorts(
     },
     sessions: {
       create: async ({ sessionToken, userId, expires }) => {
-        await db.session.create({ data: { sessionToken, userId, expires } });
+        // Lazy session cleanup (issue 05, ADR-0002 follow-up): no workers in
+        // the MVP, so each login prunes this user's expired rows alongside
+        // the insert (Auth.js additionally drops stale rows on read).
+        await db.$transaction([
+          db.session.deleteMany({
+            where: { userId, expires: { lt: deps.now() } },
+          }),
+          db.session.create({ data: { sessionToken, userId, expires } }),
+        ]);
       },
       deleteByToken: async (sessionToken) => {
         // deleteMany: logout stays idempotent (no throw on unknown tokens).

@@ -4,4 +4,6 @@ import { prodDeps } from "@/lib/auth/request";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const POST = createResendVerificationHandler(prodDeps());
+export const POST = createResendVerificationHandler(
+  prodDeps({ rateLimitBucket: "auth:resend-verification" }),
+);

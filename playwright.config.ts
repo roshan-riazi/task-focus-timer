@@ -35,6 +35,10 @@ export default defineConfig({
     env: {
       EMAIL_PROVIDER: "outbox",
       EMAIL_OUTBOX_DIR: join(tmpdir(), "focusflow-mail-outbox"),
+      // The CSRF origin gate (issue 05) expects browser Origins to match
+      // APP_URL; E2E serves 127.0.0.1, so pin it explicitly (localhost
+      // would mismatch and every mutation would 403).
+      APP_URL: "http://127.0.0.1:3000",
     },
   },
 });

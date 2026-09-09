@@ -4,4 +4,6 @@ import { prodDeps } from "@/lib/auth/request";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const POST = createRegisterHandler(prodDeps());
+export const POST = createRegisterHandler(
+  prodDeps({ rateLimitBucket: "auth:register" }),
+);

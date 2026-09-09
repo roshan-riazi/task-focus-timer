@@ -4,4 +4,6 @@ import { prodDeps } from "@/lib/auth/request";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const POST = createVerifyEmailHandler(prodDeps());
+export const POST = createVerifyEmailHandler(
+  prodDeps({ rateLimitBucket: "auth:verify-email" }),
+);
