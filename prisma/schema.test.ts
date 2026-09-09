@@ -101,4 +101,48 @@ describe("prisma schema (spec §10)", () => {
     const text = schema();
     expect(text).toMatch(/Timestamptz/);
   });
+
+  it("defines Auth.js v5 adapter models (issue 04: DB sessions)", () => {
+    const text = schema();
+    for (const model of [
+      "model Account {",
+      "model Session {",
+      "model VerificationToken {",
+    ]) {
+      expect(text).toContain(model);
+    }
+    // Adapter session storage keeps the single-DB purge story (ADR-0002).
+    expect(text).toMatch(/model Session \{[\s\S]*?sessionToken[\s\S]*?@unique/);
+    expect(text).toMatch(/model Session \{[\s\S]*?expires/);
+    expect(text).toMatch(/model VerificationToken \{[\s\S]*?@@unique\(\[identifier,\s*token\]\)/);
+  });
+
+  it("stores credential fields on the user (issue 04)", () => {
+    const text = schema();
+    expect(text).toMatch(/model User \{[\s\S]*?passwordHash/);
+    expect(text).toMatch(/model User \{[\s\S]*?emailVerified/);
+    expect(text).toMatch(/model User \{[\s\S]*?accounts\s+Account\[\]/);
+    expect(text).toMatch(/model User \{[\s\S]*?sessions\s+Session\[\]/);
+    // The timer-session back-relation moved aside for the adapter sessions.
+    expect(text).toMatch(/model User \{[\s\S]*?timerSessions\s+TimerSession\[\]/);
+    expect(text).toMatch(/model Task \{[\s\S]*?timerSessions\s+TimerSession\[\]/);
+  });
+
+  it("stores single-use email tokens with hashed values (issue 04)", () => {
+    const text = schema();
+    for (const model of [
+      "model EmailVerificationToken {",
+      "model PasswordResetToken {",
+    ]) {
+      expect(text).toContain(model);
+    }
+    expect(text).toMatch(
+      /model EmailVerificationToken \{[\s\S]*?tokenHash[\s\S]*?@unique/,
+    );
+    expect(text).toMatch(
+      /model PasswordResetToken \{[\s\S]*?tokenHash[\s\S]*?@unique/,
+    );
+    expect(text).toContain('"email_verification_tokens"');
+    expect(text).toContain('"password_reset_tokens"');
+  });
 });
