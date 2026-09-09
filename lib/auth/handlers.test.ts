@@ -191,14 +191,20 @@ describe("POST logout", () => {
     const handler = createLogoutHandler(
       deps({ getService: async () => stubService({ logout }) }),
     );
+    // Cookie-authenticated mutations carry a same-origin Origin (issue 05
+    // CSRF gate); the default app origin applies when deps omit appUrl.
+    const origin = { origin: "http://localhost:3000" };
     const res = await handler(
-      jsonRequest({}, { cookie: `${sessionCookieName()}=sess-abc` }),
+      jsonRequest(
+        {},
+        { cookie: `${sessionCookieName()}=sess-abc`, ...origin },
+      ),
     );
     expect(res.status).toBe(200);
     expect(logout).toHaveBeenCalledWith({ sessionToken: "sess-abc" });
     expect(res.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
 
-    const bare = await handler(jsonRequest({}));
+    const bare = await handler(jsonRequest({}, origin));
     expect(bare.status).toBe(200);
     expect(logout).toHaveBeenCalledWith({ sessionToken: undefined });
   });
@@ -292,6 +298,19 @@ describe("POST resend-verification", () => {
     expect(res.status).toBe(200);
     expect(requestVerification).toHaveBeenCalledWith({ userId: "u1" });
     expect((await bodyOf(res)).emailed).toBe(true);
+  });
+
+  it("ignores a forged userId in the body (identity comes from the session)", async () => {
+    const requestVerification = vi.fn(async () => ({ emailed: true }));
+    const handler = createResendVerificationHandler(
+      deps({
+        getSession: async () => appSession,
+        getService: async () => stubService({ requestVerification }),
+      }),
+    );
+    const res = await handler(jsonRequest({ userId: "victim-id" }));
+    expect(res.status).toBe(200);
+    expect(requestVerification).toHaveBeenCalledWith({ userId: "u1" });
   });
 });
 

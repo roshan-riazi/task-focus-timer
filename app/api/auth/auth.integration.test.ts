@@ -394,9 +394,15 @@ describeIfDb(
     const token = sessionTokenFrom(loggedIn);
 
     const logout = createLogoutHandler(deps);
+    // Cookie-authenticated mutations carry a same-origin Origin (issue 05
+    // CSRF gate); these handler deps omit appUrl so the localhost default
+    // applies.
     const withCookie = new Request("http://localhost:3000/api/auth/logout", {
       method: "POST",
-      headers: { cookie: `${sessionCookieName()}=${token}` },
+      headers: {
+        cookie: `${sessionCookieName()}=${token}`,
+        origin: "http://localhost:3000",
+      },
     });
     const res = await logout(withCookie);
     expect(res.status).toBe(200);

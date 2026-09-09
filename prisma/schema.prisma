@@ -199,3 +199,16 @@ model PasswordResetToken {
   @@index([userId], map: "password_reset_tokens_user_idx")
   @@map("password_reset_tokens")
 }
+
+// DB-backed rate-limit hits (issue 05, ADR-0003: portable fixed windows, no
+// Redis in the MVP). One row per guarded attempt; the store counts rows
+// inside the window and lazily prunes expired rows on each hit. `key` embeds
+// the endpoint bucket + caller IP only — never emails or user content.
+model RateLimitHit {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([key, createdAt], map: "rate_limit_hits_key_created_idx")
+  @@map("rate_limit_hits")
+}
