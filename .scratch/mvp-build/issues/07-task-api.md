@@ -1,4 +1,4 @@
-Status: in progress
+Status: done
 Milestone: 2
 Depends on: 03, 04, 05
 
@@ -43,3 +43,5 @@ is active (`TASK_LOCKED_BY_TIMER`). Zod on all input. No UI.
   personal scale), handler/auth seam duplication (distinct error types;
   shared envelope via guards), `TaskSessionRow` export (fake-store
   vocabulary in service.test.ts). Awaiting CI (merge only when green).
+- 2026-09-09: done — merged via PR #14, all CI gates green
+  (typecheck, lint, audit, migrate, vitest, playwright, gitleaks).
