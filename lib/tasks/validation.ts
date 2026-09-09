@@ -16,16 +16,28 @@ const titleSchema = z
 
 /** Optional free text: empty strings count as absent, never stored. */
 function optionalText(max: number, message: string) {
+  return textShape(max, message).optional();
+}
+
+function textShape(max: number, message: string) {
   return z
     .string()
     .trim()
     .max(max, message)
-    .transform((value) => (value === "" ? undefined : value))
-    .optional();
+    .transform((value) => (value === "" ? undefined : value));
 }
 
 const notesSchema = optionalText(2000, "Notes must be 2000 characters or fewer.");
 const categorySchema = optionalText(50, "Category must be 50 characters or fewer.");
+
+/**
+ * Explicit null clears the field (issue 08 edit form sends null for an
+ * emptied input; `""` keeps its create-time meaning of "absent/skipped" so
+ * the service's `data.notes ?? null` patch lands null → cleared).
+ */
+function clearableText(max: number, message: string) {
+  return z.union([textShape(max, message), z.null()]).optional();
+}
 
 export const createTaskSchema = z.object({
   title: titleSchema,
@@ -44,8 +56,8 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export const updateTaskSchema = z
   .object({
     title: titleSchema.optional(),
-    notes: notesSchema,
-    category: categorySchema,
+    notes: clearableText(2000, "Notes must be 2000 characters or fewer."),
+    category: clearableText(50, "Category must be 50 characters or fewer."),
     status: z.enum(["active", "archived"]).optional(),
   })
   .refine((value) => Object.values(value).some((entry) => entry !== undefined), {
