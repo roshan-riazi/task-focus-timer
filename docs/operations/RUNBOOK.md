@@ -66,6 +66,13 @@ closed, no defaults for secrets).
 
 - Triage order: `/api/health` → recent deploy diff → DB reachability → error
   monitor (scrubbed, no task content) → request-ID logs.
+- Error monitoring (issue 06): Sentry SDK wired on server, edge, and client
+  with `ERROR_DSN`; every entrypoint shares `lib/sentry` options
+  (`sendDefaultPii: false`, tracing off, `beforeSend: sentryBeforeSend` from
+  `lib/errors`, derived from `lib/sensitive-fields`). `reportError` forwards
+  only a type-only event (never the raw message, never task content). No
+  `withSentryConfig` wrapper in the MVP (no source-map upload/tunneling —
+  revisit post-beta).
 - Fix forward if small; otherwise §3 rollback, then root-cause note
   (one paragraph: symptom, cause, fix, prevention) committed under
   `docs/operations/incidents/`.
@@ -75,4 +82,6 @@ closed, no defaults for secrets).
 
 Lock email provider + templates (M1), confirm Neon retention vs 30-day copy,
 stand up the host monitor for VPS `/api/health`, rehearse §§4–5 once and file
-the evidence.
+the evidence. Before beta, trigger one staging error with canary task content
+present and review the Sentry event to confirm no titles/notes/secrets
+arrived (issue 06 manual gate).

@@ -55,3 +55,19 @@ describe("validateEnv (issue 04: auth email settings)", () => {
     ).toThrow();
   });
 });
+
+describe("validateEnv (issue 06: scrubbed error monitoring DSN)", () => {
+  it("accepts a bare env without ERROR_DSN", () => {
+    expect(validateEnv(validEnv)).toMatchObject(validEnv);
+  });
+
+  it("preserves ERROR_DSN when configured", () => {
+    const parsed = validateEnv({
+      ...validEnv,
+      ERROR_DSN: "https://public@example.ingest.sentry.io/1",
+    });
+    expect(parsed.ERROR_DSN).toBe(
+      "https://public@example.ingest.sentry.io/1",
+    );
+  });
+});

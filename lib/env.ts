@@ -10,6 +10,10 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional(),
   EMAIL_OUTBOX_DIR: z.string().optional(),
   APP_URL: z.string().url("APP_URL must be a valid URL").optional(),
+  // Issue 06 (scrubbed error monitoring): optional so existing deploys keep
+  // booting; when absent the Sentry SDK initializes disabled (no-op) and
+  // reportError only writes the content-free log line.
+  ERROR_DSN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
