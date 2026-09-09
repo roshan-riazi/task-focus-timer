@@ -1,4 +1,4 @@
-Status: in_review
+Status: done
 Milestone: 1
 Depends on: 03, 04
 
@@ -51,3 +51,8 @@ Cross-user isolation tests.
   cross-user task tests impossible until task routes exist (issue 07 must
   add them on top of `requireUser`/`notFound`); live-DB + Firefox/WebKit
   E2E left to CI (no Postgres/Docker in sandbox).
+- 2026-09-09: merged via PR #12 (merge commit `9b24150`; all 8 CI gates
+  green on the rebased 05-only diff, incl. live-DB vitest, migrate-from-zero,
+  and the full Playwright matrix). Rebased onto `main` post-#11 so the merge
+  carries only the 05 commit. Carry-over for issue 07: HTTP-level
+  cross-user task tests (`requireUser`/`notFound` are ready to reuse).
