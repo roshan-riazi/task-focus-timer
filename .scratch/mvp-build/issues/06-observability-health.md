@@ -60,3 +60,18 @@ retention vs the 30-day backup-expiry copy.
   green (health states, canary-scrub, e2e health envelope). Close-out needs:
   (1) wire the SDK with `beforeSend`, (2) one manual scrubbed-event review,
   or an explicit decision re-scoping `done` to pipeline-only.
+- 2026-09-09: SDK wired on `main` (TDD at seams: `lib/sentry`
+  `getSentryDsn`/`isSentryEnabled`/`getSentryInitOptions` — DSN-gated,
+  `beforeSend` IS `sentryBeforeSend`, `sendDefaultPii: false`, tracing off;
+  `lib/env` preserves optional `ERROR_DSN`; `reportError` forwards only a
+  type-only scrubbed event via `captureEvent` shim + lazy `@sentry/nextjs`
+  `captureEvent` when `ERROR_DSN` is set, never the raw message; entrypoints
+  `sentry.server.config` / `sentry.edge.config` / `instrumentation-client`
+  share `lib/sentry` options; `instrumentation.ts` registers per runtime +
+  `onRequestError`; deliberately no `withSentryConfig` wrapper in the MVP —
+  37/37 targeted Vitest green incl. canary-scrub; `tsc --noEmit` + `eslint`
+  clean on touched files).
+  - Close-out (1) done — SDK is live behind `ERROR_DSN`. Close-out (2) stays
+    a manual pre-beta gate: trigger one staging error with canary task
+    content present and review the Sentry event (recorded in RUNBOOK §§6–7).
+    Status stays `in_review` until that review is filed.

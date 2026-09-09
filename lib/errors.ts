@@ -90,7 +90,17 @@ export function toPublicError(_cause: unknown): PublicError {
 /**
  * Server-side error capture: logs a stable, content-free record and forwards
  * a scrubbed event to Sentry when the SDK is wired. Never logs the raw error
- * message (it may embed driver internals); never throws.
+ * message (it may embed driver internals or interpolated task content);
+ * never forwards it either — only the exception *type* leaves the process,
+ * so `beforeSend` pattern-scrubbing is a backstop rather than the privacy
+ * mechanism. Never throws.
+ *
+ * Forwarding order: test/global shim first (`captureEvent`, falling back to
+ * the legacy `captureException` shim), then the real `@sentry/nextjs` SDK via
+ * a lazy import guarded by `ERROR_DSN` (see `lib/sentry` for the init
+ * options; the DSN is read inline here to avoid an errors↔sentry import
+ * cycle). The lazy import keeps route module-load hermetic when the SDK is
+ * absent and keeps unit tests free of SDK side effects.
  */
 export async function reportError(
   cause: unknown,
@@ -103,13 +113,33 @@ export async function reportError(
       { errName: scrubString(String(name)) },
       "unhandled error",
     );
-    const sentry = (globalThis as Record<string, unknown>).Sentry as
-      | { captureException?: (e: unknown) => void }
+    const event = sentryBeforeSend({
+      exception: { values: [{ type: name }] },
+    });
+    const shim = (globalThis as Record<string, unknown>).Sentry as
+      | {
+          captureEvent?: (e: unknown) => void;
+          captureException?: (e: unknown) => void;
+        }
       | undefined;
-    if (typeof sentry?.captureException === "function") {
-      sentry.captureException(
-        sentryBeforeSend({ exception: { values: [{ type: name }] } }),
-      );
+    let forwardedViaShim = false;
+    if (typeof shim?.captureEvent === "function") {
+      shim.captureEvent(event);
+      forwardedViaShim = true;
+    } else if (typeof shim?.captureException === "function") {
+      shim.captureException(event);
+      forwardedViaShim = true;
+    }
+    if (!forwardedViaShim && process.env.ERROR_DSN?.trim()) {
+      try {
+        const { captureEvent } = (await import("@sentry/nextjs")) as {
+          captureEvent?: (e: unknown) => void;
+        };
+        if (typeof captureEvent === "function") captureEvent(event);
+      } catch {
+        // SDK absent or failed — the log line above already recorded enough
+        // to correlate via the request ID.
+      }
     }
   } catch {
     // Reporting must never break the request path.

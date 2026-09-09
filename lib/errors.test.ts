@@ -67,3 +67,40 @@ describe("error scrubbing (no task content, no secrets, no internals)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("reportError Sentry forwarding (issue 06 wiring)", () => {
+  const DSN = "https://public@example.ingest.sentry.io/1";
+
+  it("forwards only a scrubbed type-only event (no message, no canary, no secrets)", async () => {
+    const prevDsn = process.env.ERROR_DSN;
+    const prevSentry = (globalThis as Record<string, unknown>).Sentry;
+    const seen: unknown[] = [];
+    process.env.ERROR_DSN = DSN;
+    (globalThis as Record<string, unknown>).Sentry = {
+      captureEvent: (event: unknown) => {
+        seen.push(event);
+      },
+    };
+    try {
+      await reportError(
+        new Error(
+          `query failed ${CANARY_TASK_TITLE} ${CANARY_TASK_NOTES} ${SECRET_URL}`,
+        ),
+        { requestId: "req-1" },
+      );
+      expect(seen.length).toBe(1);
+      const text = JSON.stringify(seen[0]);
+      expect(text).not.toContain(CANARY_TASK_TITLE);
+      expect(text).not.toContain(CANARY_TASK_NOTES);
+      expect(text).not.toContain("supersecret");
+      expect(text).not.toContain("postgres://");
+      expect(text).not.toContain("query failed");
+    } finally {
+      if (prevDsn === undefined) delete process.env.ERROR_DSN;
+      else process.env.ERROR_DSN = prevDsn;
+      if (prevSentry === undefined)
+        delete (globalThis as Record<string, unknown>).Sentry;
+      else (globalThis as Record<string, unknown>).Sentry = prevSentry;
+    }
+  });
+});
