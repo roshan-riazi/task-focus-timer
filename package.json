@@ -59,7 +59,7 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only.",
+  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only. Scoped ignores live in pnpm-workspace.yaml (auditConfig is workspace-file-only; package.json entries are inert).",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",

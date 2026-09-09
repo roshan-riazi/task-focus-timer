@@ -1,0 +1,9 @@
+# Fail-closed audit gate (issue 02): scoped ignores live here. No `packages`
+# field means root-only workspace — install/lockfile behavior unchanged.
+auditConfig:
+  # GHSA-82fw-gwwq-j7x9: dev-only vitest path-traversal via @vitest/mocker
+  # redirect mock. No production path in this repo (first-party tests only);
+  # upstream fix is the vitest 4 major. Revisit on Dependabot's vitest-4 PR,
+  # then drop this entry.
+  ignoreGhsas:
+    - GHSA-82fw-gwwq-j7x9
