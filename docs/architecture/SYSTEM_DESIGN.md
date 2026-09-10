@@ -7,7 +7,7 @@ Sources: `docs/product/PRODUCT_SPEC.md` (product authority), `docs/adr/`
 
 ## 1. Runtime topology
 
-- Single Next.js App Router app (Node.js 22 runtime for all timer/auth routes;
+- Single Next.js App Router app (Node.js 26 runtime for all timer/auth routes;
   no Edge-only APIs, per portability).
 - One Neon Postgres database via `DATABASE_URL` (Neon cloud in prod, container
   Postgres locally / on VPS). Prisma is the only data-access path.

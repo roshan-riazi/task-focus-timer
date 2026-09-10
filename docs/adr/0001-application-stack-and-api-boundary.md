@@ -1,6 +1,6 @@
 # ADR-0001: Application stack and API boundary
 
-Status: accepted (2026-09-07)
+Status: accepted (2026-09-07; toolchain line superseded by ADR-0004 — Node.js 26)
 
 ## Context
 
@@ -15,7 +15,7 @@ boundary](../.scratch/focusflow-mvp/issues/06-choose-application-stack-and-api-b
 
 - Framework: Next.js App Router + strict TypeScript.
 - API boundary: REST API routes per `PRODUCT_SPEC.md` §11 (not Server Actions).
-- Toolchain: pnpm + Node.js 22 LTS.
+- Toolchain: pnpm + Node.js 22 LTS (superseded: Node.js 26 per ADR-0004).
 - Validation: Zod on every external input / API boundary.
 - Charts: native SVG + HTML tables; no chart library.
 - Styling: Tailwind CSS + shadcn/ui on Radix primitives (locked 2026-09-07
