@@ -1,4 +1,4 @@
-Status: done
+Status: in_review
 Milestone: 1
 Depends on: 01
 
@@ -48,8 +48,30 @@ retention vs the 30-day backup-expiry copy.
     event review stay manual pre-beta gates; `toPublicError` kept as the
     SYSTEM_DESIGN §6 envelope seam for upcoming API issues; 3s health timeout
     is deliberate reliability policy.
-  - Neon retention vs 30-day copy: docs caps are Free 6h (1 GB), Launch ≤7d,
-    Scale ≤30d — the published 30-day backup-expiry copy requires the Scale
-    plan at a 30-day history window, or pg_dump-to-remote artifacts with
-    30-day retention. Recorded in RUNBOOK §4; dashboard re-confirm + restore
-    drill stay pre-beta manual items (RUNBOOK §§4,7).
+   - Neon retention vs 30-day copy: docs caps are Free 6h (1 GB), Launch ≤7d,
+     Scale ≤30d — the published 30-day backup-expiry copy requires the Scale
+     plan at a 30-day history window, or pg_dump-to-remote artifacts with
+     30-day retention. Recorded in RUNBOOK §4; dashboard re-confirm + restore
+     drill stay pre-beta manual items (RUNBOOK §§4,7).
+- 2026-09-08: status returned to `in_review` (was `done`): this issue's own
+  Validation requires a **manual Sentry event review before beta**, and its
+  acceptance assumes scrubbed Sentry errors, but no Sentry SDK is wired yet
+  (`sentryBeforeSend` is unit-tested, not live). Everything CI-provable is
+  green (health states, canary-scrub, e2e health envelope). Close-out needs:
+  (1) wire the SDK with `beforeSend`, (2) one manual scrubbed-event review,
+  or an explicit decision re-scoping `done` to pipeline-only.
+- 2026-09-09: SDK wired on `main` (TDD at seams: `lib/sentry`
+  `getSentryDsn`/`isSentryEnabled`/`getSentryInitOptions` — DSN-gated,
+  `beforeSend` IS `sentryBeforeSend`, `sendDefaultPii: false`, tracing off;
+  `lib/env` preserves optional `ERROR_DSN`; `reportError` forwards only a
+  type-only scrubbed event via `captureEvent` shim + lazy `@sentry/nextjs`
+  `captureEvent` when `ERROR_DSN` is set, never the raw message; entrypoints
+  `sentry.server.config` / `sentry.edge.config` / `instrumentation-client`
+  share `lib/sentry` options; `instrumentation.ts` registers per runtime +
+  `onRequestError`; deliberately no `withSentryConfig` wrapper in the MVP —
+  37/37 targeted Vitest green incl. canary-scrub; `tsc --noEmit` + `eslint`
+  clean on touched files).
+  - Close-out (1) done — SDK is live behind `ERROR_DSN`. Close-out (2) stays
+    a manual pre-beta gate: trigger one staging error with canary task
+    content present and review the Sentry event (recorded in RUNBOOK §§6–7).
+    Status stays `in_review` until that review is filed.

@@ -66,6 +66,13 @@ closed, no defaults for secrets).
 
 - Triage order: `/api/health` → recent deploy diff → DB reachability → error
   monitor (scrubbed, no task content) → request-ID logs.
+- Error monitoring (issue 06): Sentry SDK wired on server, edge, and client
+  with `ERROR_DSN`; every entrypoint shares `lib/sentry` options
+  (`sendDefaultPii: false`, tracing off, `beforeSend: sentryBeforeSend` from
+  `lib/errors`, derived from `lib/sensitive-fields`). `reportError` forwards
+  only a type-only event (never the raw message, never task content). No
+  `withSentryConfig` wrapper in the MVP (no source-map upload/tunneling —
+  revisit post-beta).
 - Fix forward if small; otherwise §3 rollback, then root-cause note
   (one paragraph: symptom, cause, fix, prevention) committed under
   `docs/operations/incidents/`.
@@ -76,3 +83,19 @@ closed, no defaults for secrets).
 Lock email provider + templates (M1), confirm Neon retention vs 30-day copy,
 stand up the host monitor for VPS `/api/health`, rehearse §§4–5 once and file
 the evidence.
+
+## 8. Auth abuse controls (issue 05)
+
+- Rate limits: per-IP fixed windows on register/login/verify/resend/
+  forgot/reset (see `AUTH_RATE_LIMITS` in `lib/rate-limit/limiter.ts`).
+  Budgets self-reset when the window passes; over-limit answers are 429 +
+  `Retry-After`. A user seeing 429 on a shared network just waits out the
+  window — no manual reset exists or is needed.
+- The `rate_limit_hits` table self-prunes rows older than the largest window
+  (1h) on every recorded hit; no worker, no cron.
+- Sessions: expired rows are pruned lazily — on next login for that user and
+  on Auth.js session reads. `APP_URL` must be the public origin in every
+  environment or browser mutations 403 on the CSRF gate (E2E pins it to
+  `http://127.0.0.1:3000` in `playwright.config.ts`). Before beta, trigger one staging error with canary task content
+present and review the Sentry event to confirm no titles/notes/secrets
+arrived (issue 06 manual gate).

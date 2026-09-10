@@ -14,3 +14,10 @@ next-env.d.ts
 # misc
 *.log
 .DS_Store
+
+# playwright (regenerable test output)
+test-results/
+playwright-report/
+
+# vitest (regenerable coverage output)
+coverage/
