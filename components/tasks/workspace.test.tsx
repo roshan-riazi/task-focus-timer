@@ -38,7 +38,24 @@ import { Workspace } from "./workspace";
 function stubList(rows: unknown[]) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => jsonResponse({ tasks: rows, nextCursor: null }, 200)),
+    vi.fn(async (url: string) => {
+      // The timer slot restores on mount (issue 12) — idle here so the
+      // workspace tests stay task-focused.
+      if (typeof url === "string" && url.startsWith("/api/timer/current")) {
+        return jsonResponse(
+          {
+            session: null,
+            reconciled: null,
+            pendingConfirmation: null,
+            autoStarted: null,
+            cycle: { completedFocusCount: 0, intervalsBeforeLongBreak: 4 },
+            next: null,
+          },
+          200,
+        );
+      }
+      return jsonResponse({ tasks: rows, nextCursor: null }, 200);
+    }),
   );
 }
 
