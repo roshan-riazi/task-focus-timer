@@ -21,7 +21,8 @@ export type RateLimitBucket =
   | "auth:forgot-password"
   | "auth:reset-password"
   | "auth:verify-email"
-  | "auth:resend-verification";
+  | "auth:resend-verification"
+  | "account:delete";
 
 /**
  * Per-IP trailing windows, deliberately generous: a user retrying a typo'd
@@ -37,6 +38,10 @@ export const AUTH_RATE_LIMITS: Record<RateLimitBucket, RateLimitRule> = {
   "auth:reset-password": { limit: 10, windowMs: 60 * 60_000 },
   "auth:verify-email": { limit: 20, windowMs: 60 * 60_000 },
   "auth:resend-verification": { limit: 5, windowMs: 60 * 60_000 },
+  // Destructive, cookie-authed, CSRF-gated: nobody legitimately deletes
+  // several accounts per hour from one IP, so a tight ceiling only bites
+  // automated abuse of a stolen session.
+  "account:delete": { limit: 5, windowMs: 60 * 60_000 },
 };
 
 export interface WindowCount {

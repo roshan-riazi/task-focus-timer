@@ -29,6 +29,7 @@ function deps(rateLimit: HandlerDeps["rateLimit"]): HandlerDeps {
         verifyEmail: notImplemented,
         forgotPassword: async () => undefined,
         resetPassword: async () => undefined,
+        deleteAccount: async () => ({ deleted: true as const }),
       }) as AuthService,
     getSession: async () => null,
     appUrl: APP_URL,

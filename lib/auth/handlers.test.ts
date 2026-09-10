@@ -3,6 +3,7 @@ import { AuthServiceError } from "./service";
 import type { AuthService } from "./service";
 import type { AppSession } from "./session";
 import {
+  createDeleteAccountHandler,
   createForgotPasswordHandler,
   createLoginHandler,
   createLogoutHandler,
@@ -356,5 +357,135 @@ describe("POST reset-password", () => {
     const res = await handler(jsonRequest({ token: "stale", password: "x".repeat(12) }));
     expect(res.status).toBe(400);
     expect(res.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+/**
+ * DELETE /api/account (issue 18, spec §8.1): explicit DELETE confirmation,
+ * session-derived identity, cleared cookie on success. CSRF + rate-limit
+ * gates ride the shared `withMutationGates` wrapper (pinned in
+ * handlers-origin.test.ts / handlers-ratelimit.test.ts).
+ */
+describe("DELETE account", () => {
+  const SIGNED_IN: AppSession = {
+    user: { id: "u1", email: "a@x.com", emailVerified: null, timezone: "UTC" },
+    expires: new Date("2026-10-08T12:00:00.000Z").toISOString(),
+  };
+
+  function deleteRequest(
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Request {
+    return new Request("http://localhost:3000/api/account", {
+      method: "DELETE",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function accountDeps(
+    overrides: Partial<HandlerDeps> = {},
+  ): HandlerDeps {
+    return deps({
+      getSession: async () => SIGNED_IN,
+      ...overrides,
+    });
+  }
+
+  it("returns 401 without a session, never reaching the service", async () => {
+    const deleteAccount = vi.fn(async (): Promise<{ deleted: true }> => ({ deleted: true }));
+    const handler = createDeleteAccountHandler(
+      accountDeps({
+        getSession: async () => null,
+        getService: async () => stubService({ deleteAccount }),
+      }),
+    );
+    const res = await handler(deleteRequest({ confirmation: "DELETE" }));
+    expect(res.status).toBe(401);
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 with field errors when the service rejects the confirmation", async () => {
+    const deleteAccount = vi.fn(async () => {
+      throw new AuthServiceError("VALIDATION_ERROR", "Check the highlighted fields and try again.", {
+        confirmation: ["Type DELETE to confirm account deletion."],
+      });
+    });
+    const handler = createDeleteAccountHandler(
+      accountDeps({ getService: async () => stubService({ deleteAccount }) }),
+    );
+    const res = await handler(
+      deleteRequest({ confirmation: "delete" }, { origin: "http://localhost:3000" }),
+    );
+    expect(res.status).toBe(400);
+    const body = await bodyOf(res);
+    expect(body.error?.code).toBe("VALIDATION_ERROR");
+    expect(body.error?.fields?.confirmation?.length).toBeGreaterThan(0);
+    expect(deleteAccount).toHaveBeenCalledOnce();
+  });
+
+  it("deletes by session identity (forged body ids reach nothing) and clears the cookie", async () => {
+    const deleteAccount = vi.fn(
+      async (_userId: string): Promise<{ deleted: true }> => ({
+        deleted: true,
+      }),
+    );
+    const handler = createDeleteAccountHandler(
+      accountDeps({ getService: async () => stubService({ deleteAccount }) }),
+    );
+    const res = await handler(
+      deleteRequest(
+        { confirmation: "DELETE", userId: "victim-id" },
+        { origin: "http://localhost:3000" },
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(deleteAccount).toHaveBeenCalledOnce();
+    expect(deleteAccount.mock.calls[0][0]).toBe("u1");
+    expect(await res.json()).toEqual({ deleted: true });
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(sessionCookieName());
+    expect(setCookie).toContain("Max-Age=0");
+  });
+
+  it("rejects a mismatched Origin with 403 before the service runs", async () => {
+    const deleteAccount = vi.fn(async (): Promise<{ deleted: true }> => ({ deleted: true }));
+    const handler = createDeleteAccountHandler(
+      accountDeps({
+        getService: async () => stubService({ deleteAccount }),
+        appUrl: "https://app.example",
+      }),
+    );
+    const res = await handler(
+      deleteRequest(
+        { confirmation: "DELETE" },
+        { origin: "https://evil.example" },
+      ),
+    );
+    expect(res.status).toBe(403);
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 with Retry-After when the rate budget is spent", async () => {
+    const deleteAccount = vi.fn(async (): Promise<{ deleted: true }> => ({ deleted: true }));
+    const handler = createDeleteAccountHandler(
+      accountDeps({
+        getService: async () => stubService({ deleteAccount }),
+        rateLimit: async () => ({
+          allowed: false,
+          retryAfterSeconds: 42,
+          resetAt: new Date("2026-09-08T12:01:00.000Z"),
+        }),
+      }),
+    );
+    const res = await handler(
+      deleteRequest(
+        { confirmation: "DELETE" },
+        { origin: "http://localhost:3000" },
+      ),
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("42");
+    expect(deleteAccount).not.toHaveBeenCalled();
   });
 });

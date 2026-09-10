@@ -13,6 +13,7 @@ import {
 } from "./tokens";
 export { PASSWORD_RESET_TTL_MS, VERIFY_EMAIL_TTL_MS };
 import {
+  deleteAccountSchema,
   forgotPasswordSchema,
   flattenZodFields,
   loginSchema,
@@ -127,6 +128,14 @@ export interface AuthPorts {
       tokenId: string;
       consumedAt: Date;
     }): Promise<void>;
+    /**
+     * Live purge for account deletion (issue 18, spec §8.1): removes the
+     * user row; related rows (settings, tasks, timer sessions, cycle state,
+     * idempotency keys, auth sessions, email tokens) go with it via
+     * `onDelete: Cascade` (see prisma/schema.prisma). Idempotent: deleting
+     * an already-gone user resolves without throwing.
+     */
+    deleteAccount(userId: string): Promise<void>;
   };
   sessions: {
     create(data: {
@@ -339,6 +348,17 @@ export function createAuthService(ports: AuthPorts) {
         tokenId: row.id,
         consumedAt: now,
       });
+    },
+
+    async deleteAccount(
+      userId: string,
+      input: unknown,
+    ): Promise<{ deleted: true }> {
+      // Identity is the session-derived `userId` argument (spec §11.5) —
+      // the body carries only the confirmation literal, never a user id.
+      parse(deleteAccountSchema, input);
+      await ports.users.deleteAccount(userId);
+      return { deleted: true };
     },
   };
 }
