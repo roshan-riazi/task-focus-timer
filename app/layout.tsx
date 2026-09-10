@@ -49,6 +49,19 @@ export default async function RootLayout({
               FocusFlow
             </Link>
             <nav
+              aria-label="Primary"
+              className="flex items-center gap-1 text-sm"
+            >
+              {session && (
+                <Link
+                  href="/app"
+                  className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  Focus
+                </Link>
+              )}
+            </nav>
+            <nav
               aria-label="Account"
               className="flex items-center gap-1 text-sm"
             >

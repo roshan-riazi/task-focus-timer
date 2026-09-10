@@ -84,14 +84,20 @@ describe("updateTaskSchema", () => {
     ).toThrow();
   });
 
-  it("accepts archiving via status but never completion (use /complete)", () => {
-    expect(updateTaskSchema.parse({ status: "archived" })).toEqual({
+  it("accepts archiving via status but never completion (use /complete)", () => {    expect(updateTaskSchema.parse({ status: "archived" })).toEqual({
       status: "archived",
     });
     expect(updateTaskSchema.parse({ status: "active" })).toEqual({
       status: "active",
     });
     expect(() => updateTaskSchema.parse({ status: "completed" })).toThrow();
+  });
+
+  it("accepts explicit null to clear notes/category (issue 08 edit)", () => {
+    expect(updateTaskSchema.parse({ notes: null })).toEqual({ notes: null });
+    expect(updateTaskSchema.parse({ category: null })).toEqual({
+      category: null,
+    });
   });
 });
 
