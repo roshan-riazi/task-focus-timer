@@ -1,4 +1,4 @@
-Status: in progress
+Status: done
 Milestone: 2
 Depends on: 07
 
@@ -21,7 +21,12 @@ logic.
 
 ## Comments
 
-- 2026-09-09: implemented on branch `08-task-ui` (TDD at agreed seams:
+- 2026-09-10: done — merged via PR #16, all CI gates green
+  (typecheck, lint, audit, migrate, vitest, playwright on
+  chromium+firefox+webkit, gitleaks). Post-review fix on the way in:
+  e2e tab helper sweeps backward after forward (Firefox/WebKit resume
+  focus after the blur point and park on the last stop — Shift+Tab is
+  the keyboard-only continuation).
   tasks-API client with stubbed fetch, TaskPanel/TaskItem/Workspace via
   Testing Library against public roles with a stateful in-memory task
   server, `/app` gate + responsive layout via Playwright — 41 task UI
