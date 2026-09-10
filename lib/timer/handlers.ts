@@ -133,8 +133,14 @@ function idempotencyKeyOf(request: Request): string | null {
 
 export function createCurrentTimerHandler(deps: TimerHandlerDeps) {
   return withAuth(deps, async (_request, requestId, userId, service) => {
-    const { session } = await service.current(userId);
-    return jsonWithRequestId({ session }, 200, requestId);
+    // The reconcile entry point (spec §8.4): a GET that may lazily
+    // auto-finalize an interval expired within the grace window — the same
+    // write-on-read precedent as the settings-GET defaults bootstrap
+    // (issue 09). Worst-case cross-site trigger only accelerates the
+    // specified auto-complete (no data leak; the response is unreadable
+    // cross-origin and SameSite cookies bound the vector).
+    const result = await service.current(userId);
+    return jsonWithRequestId(result, 200, requestId);
   });
 }
 
@@ -163,27 +169,27 @@ export function createResumeTimerHandler(deps: TimerHandlerDeps) {
 
 export function createCompleteTimerHandler(deps: TimerHandlerDeps) {
   return withMutationAuth(deps, async (request, requestId, userId, service) => {
-    const session = await service.complete(userId, {
+    const result = await service.complete(userId, {
       idempotencyKey: idempotencyKeyOf(request),
     });
-    return jsonWithRequestId({ session }, 200, requestId);
+    return jsonWithRequestId(result, 200, requestId);
   });
 }
 
 export function createCancelTimerHandler(deps: TimerHandlerDeps) {
   return withMutationAuth(deps, async (request, requestId, userId, service) => {
-    const session = await service.cancel(userId, {
+    const result = await service.cancel(userId, {
       idempotencyKey: idempotencyKeyOf(request),
     });
-    return jsonWithRequestId({ session }, 200, requestId);
+    return jsonWithRequestId(result, 200, requestId);
   });
 }
 
 export function createSkipBreakTimerHandler(deps: TimerHandlerDeps) {
   return withMutationAuth(deps, async (request, requestId, userId, service) => {
-    const session = await service.skipBreak(userId, {
+    const result = await service.skipBreak(userId, {
       idempotencyKey: idempotencyKeyOf(request),
     });
-    return jsonWithRequestId({ session }, 200, requestId);
+    return jsonWithRequestId(result, 200, requestId);
   });
 }

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AppSession } from "../auth/session";
-import { TimerServiceError, type TimerService } from "./service";
+import {
+  TimerServiceError,
+  type CurrentResult,
+  type FinalizeResult,
+  type TimerService,
+} from "./service";
 import {
   createCancelTimerHandler,
   createCompleteTimerHandler,
@@ -49,6 +54,36 @@ function sampleSession() {
     cancelledAt: null,
     createdAt: "2026-09-10T12:00:00.000Z",
     updatedAt: "2026-09-10T12:00:00.000Z",
+  };
+}
+
+function sampleCycle() {
+  return { completedFocusCount: 0, intervalsBeforeLongBreak: 4 };
+}
+
+function sampleCurrent(
+  overrides: Partial<CurrentResult> = {},
+): CurrentResult {
+  return {
+    session: sampleSession(),
+    reconciled: null,
+    pendingConfirmation: null,
+    autoStarted: null,
+    cycle: sampleCycle(),
+    next: null,
+    ...overrides,
+  };
+}
+
+function sampleFinalize(
+  overrides: Partial<FinalizeResult> = {},
+): FinalizeResult {
+  return {
+    session: { ...sampleSession(), status: "completed" },
+    autoStarted: null,
+    cycle: sampleCycle(),
+    next: { intervalType: "short_break" },
+    ...overrides,
   };
 }
 
@@ -155,21 +190,38 @@ describe("guard rails (every handler)", () => {
 
 describe("GET /api/timer/current", () => {
   it("returns the active session, or null when idle", async () => {
-    const session = sampleSession();
-    const current = vi.fn(async () => ({ session }));
+    const result = sampleCurrent();
+    const current = vi.fn(async () => result);
     const res = await createCurrentTimerHandler(
       deps({ getService: async () => stubService({ current }) }),
     )(new Request(`${APP_URL}/api/timer/current`, { method: "GET" }));
     expect(res.status).toBe(200);
     expect(current).toHaveBeenCalledWith("user-1");
-    await expect(res.json()).resolves.toEqual({ session });
+    await expect(res.json()).resolves.toEqual(result);
 
-    const idle = vi.fn(async () => ({ session: null }));
+    const idleResult = sampleCurrent({ session: null, next: { intervalType: "focus" } });
+    const idle = vi.fn(async () => idleResult);
     const idleRes = await createCurrentTimerHandler(
       deps({ getService: async () => stubService({ current: idle }) }),
     )(new Request(`${APP_URL}/api/timer/current`, { method: "GET" }));
     expect(idleRes.status).toBe(200);
-    await expect(idleRes.json()).resolves.toEqual({ session: null });
+    await expect(idleRes.json()).resolves.toEqual(idleResult);
+  });
+
+  it("passes reconcile outcomes through untouched", async () => {
+    const pending = sampleCurrent({
+      pendingConfirmation: {
+        session: sampleSession(),
+        overdueSeconds: 7200,
+      },
+    });
+    const res = await createCurrentTimerHandler(
+      deps({
+        getService: async () => stubService({ current: vi.fn(async () => pending) }),
+      }),
+    )(new Request(`${APP_URL}/api/timer/current`, { method: "GET" }));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(pending);
   });
 });
 
@@ -282,8 +334,8 @@ describe("POST /api/timer/pause + /resume", () => {
 
 describe("POST /api/timer/complete + /cancel + /skip-break", () => {
   it("forwards the Idempotency-Key header to the service", async () => {
-    const session = { ...sampleSession(), status: "completed" as const };
-    const complete = vi.fn(async () => session);
+    const result = sampleFinalize();
+    const complete = vi.fn(async () => result);
     const res = await createCompleteTimerHandler(
       deps({ getService: async () => stubService({ complete }) }),
     )(
@@ -295,17 +347,21 @@ describe("POST /api/timer/complete + /cancel + /skip-break", () => {
     expect(complete).toHaveBeenCalledWith("user-1", {
       idempotencyKey: "key-1",
     });
-    await expect(res.json()).resolves.toEqual({ session });
+    await expect(res.json()).resolves.toEqual(result);
   });
 
   it("finalizes without a key when the header is absent", async () => {
-    const session = { ...sampleSession(), status: "cancelled" as const };
-    const cancel = vi.fn(async () => session);
+    const result = sampleFinalize({
+      session: { ...sampleSession(), status: "cancelled" },
+      next: { intervalType: "focus" },
+    });
+    const cancel = vi.fn(async () => result);
     const res = await createCancelTimerHandler(
       deps({ getService: async () => stubService({ cancel }) }),
     )(postRequest("/api/timer/cancel"));
     expect(res.status).toBe(200);
     expect(cancel).toHaveBeenCalledWith("user-1", { idempotencyKey: null });
+    await expect(res.json()).resolves.toEqual(result);
   });
 
   it("maps repeat finalization to 409 ALREADY_FINALIZED", async () => {
@@ -365,12 +421,16 @@ describe("POST /api/timer/complete + /cancel + /skip-break", () => {
   });
 
   it("skips through the session user", async () => {
-    const skipped = { ...sampleSession(), status: "cancelled" as const };
-    const skipBreak = vi.fn(async () => skipped);
+    const result = sampleFinalize({
+      session: { ...sampleSession(), status: "cancelled" },
+      next: { intervalType: "focus" },
+    });
+    const skipBreak = vi.fn(async () => result);
     const res = await createSkipBreakTimerHandler(
       deps({ getService: async () => stubService({ skipBreak }) }),
     )(postRequest("/api/timer/skip-break"));
     expect(res.status).toBe(200);
     expect(skipBreak).toHaveBeenCalledWith("user-1", { idempotencyKey: null });
+    await expect(res.json()).resolves.toEqual(result);
   });
 });
