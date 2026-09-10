@@ -1,4 +1,4 @@
-Status: in progress
+Status: done
 Milestone: 3
 Depends on: 03, 04, 05
 
@@ -45,3 +45,10 @@ auto-start flags, sound on/off + preset + volume (preset key allow-list,
   DB-level preset/range CHECKs left to follow-ups per 03's deferral note
   (allow-list enforced at the Zod boundary here). Awaiting CI (merge only
   when green).
+- 2026-09-10: done — merged via PR #18 (merge commit `0804d67`; all 8 CI
+  gates green: typecheck, lint, audit, migrate, vitest, playwright,
+  gitleaks, ci-required). Carry-over for issue 10: planned durations are
+  read from `user_settings` at timer start (seconds units, this API's
+  contract); preset→pattern mapping + audible check belong to issue 13,
+  which should reuse the exported `SOUND_PRESETS` allow-list. Follow-up:
+  timezone canonicalization across auth + settings (see comment above).
