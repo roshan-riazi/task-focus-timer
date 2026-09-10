@@ -23,7 +23,7 @@ jobs:
     name: typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -39,7 +39,7 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -70,7 +70,7 @@ jobs:
     env:
       DATABASE_URL: postgres://focusflow:focusflow@localhost:5432/focusflow
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -87,7 +87,7 @@ jobs:
     name: audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -118,7 +118,7 @@ jobs:
     env:
       DATABASE_URL: postgres://focusflow:focusflow@localhost:5432/focusflow
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -152,7 +152,7 @@ jobs:
       DATABASE_URL: postgres://focusflow:focusflow@localhost:5432/focusflow
       AUTH_SECRET: ci-only-placeholder-secret-min-32-chars-long
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.17.0
@@ -170,7 +170,7 @@ jobs:
     name: gitleaks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
