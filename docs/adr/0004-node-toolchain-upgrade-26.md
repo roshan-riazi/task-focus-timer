@@ -33,4 +33,8 @@ the new runtime, so compatibility is proven empirically, not assumed.
 - Negative: local checkouts still on Node 22/24 see an engines warning
   until they `nvm use`; CI is the source of truth for the new runtime
   until every dev upgrades.
+- Negative: Node 26's experimental file-backed `localStorage` global is
+  unavailable without `--localstorage-file`, so jsdom no longer supplies a
+  working store — `vitest.setup.ts` installs an in-memory stub when none
+  is usable (no-op on older runtimes).
 - Follow-up: none — PR #6 closes as superseded by this change.
