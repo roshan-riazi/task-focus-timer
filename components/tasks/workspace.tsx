@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import type { PublicTask } from "@/lib/tasks/service";
+import { TimerPanel } from "../timer/timer-panel";
 import { TaskPanel } from "./task-panel";
 
 /**
  * Focus workspace (spec §9.3, prototype `workspace.html`): task list with
- * quick-add on the left, timer in the main area. The timer itself lands in
- * milestone 3 (issue 12) — this slot only mirrors the focus selection so
- * task→timer wiring is already exercised keyboard-first. No timer logic here.
+ * quick-add on the left, timer in the main area. The selected task links
+ * the next start; a running interval keeps its server snapshot instead
+ * (spec §8.2 — no task switch mid-interval).
  */
 export function Workspace() {
   const [selected, setSelected] = useState<PublicTask | null>(null);
@@ -33,10 +34,9 @@ export function Workspace() {
             Select a task to line up your next focus interval.
           </p>
         )}
-        <p className="mt-2 text-xs opacity-70">
-          The focus timer lands in milestone 3 — task selection already works
-          with keyboard only.
-        </p>
+        <div className="mt-4">
+          <TimerPanel selectedTask={selected} />
+        </div>
       </section>
     </div>
   );
