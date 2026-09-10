@@ -24,6 +24,11 @@ import {
   remainingSeconds,
 } from "./time";
 import { Button } from "../ui/button";
+import { getSettings } from "@/components/settings/api";
+import { ensureAudioUnlocked, playAlarm } from "@/lib/alarms/player";
+import type { AlarmMoment } from "@/lib/alarms/presets";
+import { notifyIntervalComplete } from "@/lib/notifications/notify";
+import { SOUND_PRESETS, type SoundPreset } from "@/lib/settings/validation";
 
 const RING_RADIUS = 56;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -55,6 +60,54 @@ function plannedMinutes(session: PublicSession): number {
   return Math.max(1, Math.round(session.plannedDurationSeconds / 60));
 }
 
+interface AlarmSoundSettings {
+  soundEnabled: boolean;
+  soundPreset: SoundPreset;
+  soundVolume: number;
+  notificationsEnabled: boolean;
+}
+
+const DEFAULT_ALARM_SETTINGS: AlarmSoundSettings = {
+  soundEnabled: true,
+  soundPreset: "chime",
+  soundVolume: 80,
+  notificationsEnabled: false,
+};
+
+function toAlarmMoment(intervalType: IntervalType): AlarmMoment {
+  return intervalType === "focus" ? "focus-end" : "break-end";
+}
+
+function sanitizeAlarmSettings(value: unknown): AlarmSoundSettings {
+  if (value === null || typeof value !== "object") return DEFAULT_ALARM_SETTINGS;
+  const record = value as Record<string, unknown>;
+  const preset = record.soundPreset;
+  const volume = record.soundVolume;
+  return {
+    soundEnabled:
+      typeof record.soundEnabled === "boolean"
+        ? record.soundEnabled
+        : DEFAULT_ALARM_SETTINGS.soundEnabled,
+    soundPreset: (
+      typeof preset === "string" &&
+      (SOUND_PRESETS as readonly string[]).includes(preset)
+        ? preset
+        : DEFAULT_ALARM_SETTINGS.soundPreset
+    ) as SoundPreset,
+    soundVolume:
+      typeof volume === "number" &&
+      Number.isInteger(volume) &&
+      volume >= 0 &&
+      volume <= 100
+        ? volume
+        : DEFAULT_ALARM_SETTINGS.soundVolume,
+    notificationsEnabled:
+      typeof record.notificationsEnabled === "boolean"
+        ? record.notificationsEnabled
+        : DEFAULT_ALARM_SETTINGS.notificationsEnabled,
+  };
+}
+
 /**
  * Focus timer (spec §8.3–§8.4, prototype `workspace.html` timer section).
  * Server-authoritative: `GET current` restores on mount and reconciles on
@@ -62,7 +115,15 @@ function plannedMinutes(session: PublicSession): number {
  * State changes announce once via a polite status region; the ticking clock
  * stays `aria-hidden` and the ring (progressbar role) carries the numeric
  * value without a live region (spec §12.3 — no per-tick announcements).
- * No audio here (issue 13).
+ *
+ * Alarms (issue 13, spec §8.6, SYSTEM_DESIGN §4): a completed finalize
+ * plays the saved preset at the set volume — focus-end vs break-end
+ * patterns stay distinct — and raises a browser notification when enabled
+ * and permitted. Cancelled finalizes (cancel/skip/discard) stay silent.
+ * Sound is best-effort and never blocks finalization; denial/unsupported
+ * audio degrades to silent + the visual status announcement, and task
+ * titles never reach audio/notification payloads (only the interval moment
+ * travels — spec §12.2).
  */
 export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelProps) {
   const [current, setCurrent] = useState<CurrentResult | null>(null);
@@ -87,6 +148,22 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
   const scopeRef = useRef<HTMLDivElement | null>(null);
   const expectFocusMove = useRef(false);
   const [actionCount, setActionCount] = useState(0);
+  // Saved alarm preferences (issue 13): read fresh on every finalize
+  // that needs them — never cached across intervals, so a settings change
+  // between intervals applies to the next moment (spec: correct preset at
+  // the set volume on *each* moment). Lazy (not on mount) so normal mounts
+  // keep the single `GET current` fetch — issue 12's restore / reconcile
+  // timing stays untouched. Failures/malformed payloads fall back to the
+  // defaults; no state, so playback never re-renders.
+  const loadAlarmSettings = useCallback((): Promise<AlarmSoundSettings> => {
+    return (async () => {
+      try {
+        return sanitizeAlarmSettings(await getSettings());
+      } catch {
+        return DEFAULT_ALARM_SETTINGS;
+      }
+    })();
+  }, []);
 
   // Rendered from the server stamps on every paint — never stored.
   const nowMs = Date.now();
@@ -128,6 +205,43 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
     return `${label} interval running — ${formatRemaining(remainingSeconds(session, Date.now()))} left.`;
   }
 
+  /**
+   * Fire the finalize feedback for a completed interval: the saved preset
+   * at the set volume plus a browser notification when enabled. Only the
+   * interval *moment* travels — never task titles/snapshots (spec §12.2).
+   * Best-effort and never throws, so denial/unsupported audio degrades to
+   * silent + the visual status announcement.
+   */
+  const soundForFinalized = useCallback((session: PublicSession) => {
+    if (session.status !== "completed") return;
+    const moment = toAlarmMoment(session.intervalType);
+    void (async () => {
+      let settings: AlarmSoundSettings;
+      try {
+        settings = await loadAlarmSettings();
+      } catch {
+        settings = DEFAULT_ALARM_SETTINGS;
+      }
+      try {
+        await playAlarm({
+          preset: settings.soundPreset,
+          moment,
+          volume: settings.soundVolume,
+          soundEnabled: settings.soundEnabled,
+        });
+      } catch {
+        // Player already degrades to silent; this guards the seam.
+      }
+      try {
+        await notifyIntervalComplete(moment, {
+          notificationsEnabled: settings.notificationsEnabled,
+        });
+      } catch {
+        // Denial stays silent + visual (issue 13 validation).
+      }
+    })();
+  }, [loadAlarmSettings]);
+
   const refresh = useCallback(async () => {
     try {
       const result = await getCurrentTimer();
@@ -138,6 +252,10 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
         lastSignature.current = signature;
         setAnnouncement(announceFor(result));
       }
+      // Grace-window auto-finalize landed on this call: sound + notify once
+      // for the reconciled interval (spec §8.6). `reconciled` appears on
+      // exactly one `current` response, so this fires once per finalize.
+      if (result.reconciled) soundForFinalized(result.reconciled);
     } catch (err) {
       setError(
         err instanceof TimerApiError
@@ -145,7 +263,7 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
           : "Something went wrong. Check your connection and retry.",
       );
     }
-  }, []);
+  }, [soundForFinalized]);
 
   // Mount: restore the running/paused interval (spec §8.4 refresh rule).
   useEffect(() => {
@@ -276,6 +394,10 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
       },
       `${verb}.${nextLabel}`,
     );
+    // Explicit finalize (complete / confirm-complete): completed intervals
+    // sound + notify; cancelled ones (cancel/skip/discard) stay silent
+    // (spec §8.6 — the alarm marks an interval *end*, not an abort).
+    soundForFinalized(result.session);
   }
 
   /** 409s mean another writer moved first — resync instead of guessing. */
@@ -289,6 +411,10 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
 
   async function runAction(name: string, fn: () => Promise<void>) {
     if (pendingAction) return;
+    // The click is the user gesture that unlocks WebAudio (SYSTEM_DESIGN
+    // §4 alarms). Fire-and-forget: unlock must never delay the action, and
+    // the player degrades to silent when unlock fails.
+    void ensureAudioUnlocked().catch(() => undefined);
     setPendingAction(name);
     setError(null);
     try {
