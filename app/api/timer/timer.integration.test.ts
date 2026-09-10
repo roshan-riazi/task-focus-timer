@@ -64,7 +64,12 @@ describeIfDb(
 
     async function makeUser(
       prefix: string,
-      settings?: { focusDurationSeconds?: number },
+      settings?: {
+        focusDurationSeconds?: number;
+        autoStartBreaks?: boolean;
+        autoStartFocus?: boolean;
+        intervalsBeforeLongBreak?: number;
+      },
     ): Promise<{ id: string; email: string }> {
       const address = email(prefix);
       const user = await db.user.create({ data: { email: address } });
@@ -157,6 +162,47 @@ describeIfDb(
         where: { userId },
       });
       return row?.completedFocusCount ?? 0;
+    }
+
+    type CurrentBody = {
+      session: SessionBody | null;
+      reconciled: SessionBody | null;
+      pendingConfirmation: {
+        session: SessionBody;
+        overdueSeconds: number;
+      } | null;
+      autoStarted: SessionBody | null;
+      cycle: { completedFocusCount: number; intervalsBeforeLongBreak: number };
+      next: { intervalType: string } | null;
+    };
+
+    type FinalizeBody = {
+      session: SessionBody;
+      autoStarted: SessionBody | null;
+      cycle: { completedFocusCount: number; intervalsBeforeLongBreak: number };
+      next: { intervalType: string } | null;
+    };
+
+    async function getCurrent(
+      deps: TimerHandlerDeps,
+    ): Promise<{ status: number; body: CurrentBody }> {
+      const raw = await createCurrentTimerHandler(deps)(currentReq());
+      return { status: raw.status, body: (await raw.json()) as CurrentBody };
+    }
+
+    async function finalize(
+      path: "/api/timer/complete" | "/api/timer/cancel" | "/api/timer/skip-break",
+      deps: TimerHandlerDeps,
+      key?: string,
+    ): Promise<{ status: number; body: FinalizeBody }> {
+      const handler =
+        path === "/api/timer/complete"
+          ? createCompleteTimerHandler(deps)
+          : path === "/api/timer/cancel"
+            ? createCancelTimerHandler(deps)
+            : createSkipBreakTimerHandler(deps);
+      const raw = await handler(actionReq(path, key));
+      return { status: raw.status, body: (await raw.json()) as FinalizeBody };
     }
 
     /** Move the active interval's start back `secondsAgo`, keeping the plan. */
@@ -461,6 +507,216 @@ describeIfDb(
       expect(
         ((await notABreak.json()) as { error: { code: string } }).error.code,
       ).toBe("INVALID_TRANSITION");
+    });
+
+    it("auto-finalizes an expiry within the grace window on current, exactly once", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-reconcile-auto");
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 1800); // 30 min past the end
+
+      const first = await getCurrent(userDeps);
+      expect(first.status).toBe(200);
+      expect(first.body.session).toBeNull();
+      expect(first.body.reconciled).toMatchObject({
+        status: "completed",
+        actualDurationSeconds: 1500,
+      });
+      expect(first.body.pendingConfirmation).toBeNull();
+      expect(first.body.autoStarted).toBeNull();
+      expect(first.body.cycle).toMatchObject({
+        completedFocusCount: 1,
+        intervalsBeforeLongBreak: 4,
+      });
+      expect(first.body.next).toEqual({ intervalType: "short_break" });
+      expect(await cycleCount(user.id)).toBe(1);
+
+      // A second read reports the plain post-state — one history row total.
+      const second = await getCurrent(userDeps);
+      expect(second.body.session).toBeNull();
+      expect(second.body.reconciled).toBeNull();
+      expect(
+        await db.timerSession.count({ where: { userId: user.id } }),
+      ).toBe(1);
+      // A late explicit complete conflicts instead of double-counting.
+      const late = await finalize("/api/timer/complete", userDeps, "late-key");
+      expect(late.status).toBe(409);
+      expect(await cycleCount(user.id)).toBe(1);
+    });
+
+    it("holds a long-expired interval for Complete/Discard confirmation", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-reconcile-confirm");
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 3700); // 61+ min past the end
+
+      const pending = await getCurrent(userDeps);
+      expect(pending.status).toBe(200);
+      expect(pending.body.reconciled).toBeNull();
+      expect(pending.body.session?.status).toBe("running");
+      expect(pending.body.pendingConfirmation?.session.id).toBe(
+        pending.body.session?.id,
+      );
+      expect(
+        pending.body.pendingConfirmation?.overdueSeconds,
+      ).toBeGreaterThanOrEqual(3695);
+      expect(await activeCount(user.id)).toBe(1);
+      expect(await cycleCount(user.id)).toBe(0);
+
+      // Complete (the dialog's Complete choice): bounded minutes, one bump.
+      const completed = await finalize("/api/timer/complete", userDeps);
+      expect(completed.status).toBe(200);
+      expect(completed.body.session).toMatchObject({
+        status: "completed",
+        actualDurationSeconds: 1500,
+      });
+      expect(await cycleCount(user.id)).toBe(1);
+      expect(
+        await db.timerSession.count({ where: { userId: user.id } }),
+      ).toBe(1);
+    });
+
+    it("discards a long-expired interval with no minutes and no cycle step", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-reconcile-discard");
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 7200);
+
+      const pending = await getCurrent(userDeps);
+      expect(pending.body.pendingConfirmation).not.toBeNull();
+      expect(await activeCount(user.id)).toBe(1);
+
+      // Discard (the dialog's Discard choice) is a cancel: no auto-start,
+      // a focus retry proposal, and no cycle movement.
+      const discarded = await finalize("/api/timer/cancel", userDeps);
+      expect(discarded.status).toBe(200);
+      expect(discarded.body.session.status).toBe("cancelled");
+      expect(discarded.body.autoStarted).toBeNull();
+      expect(discarded.body.next).toEqual({ intervalType: "focus" });
+      expect(await cycleCount(user.id)).toBe(0);
+      expect(await activeCount(user.id)).toBe(0);
+    });
+
+    it("auto-finalizes concurrent currents once with one cycle bump", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-reconcile-race");
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 1800);
+
+      const [first, second] = await Promise.all([
+        getCurrent(userDeps),
+        getCurrent(userDeps),
+      ]);
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      // Exactly one finalize won: one history row, one cycle bump. The
+      // winner announces it via `reconciled`; a loser that read after the
+      // commit reports the plain post-state (exactly-once announcement).
+      // When both overlap inside the write they replay the same winner.
+      const reconciledIds = [first.body.reconciled?.id, second.body.reconciled?.id].filter(
+        (id) => id !== null && id !== undefined,
+      );
+      expect(reconciledIds.length).toBeGreaterThanOrEqual(1);
+      expect(new Set(reconciledIds).size).toBe(1);
+      expect(
+        await db.timerSession.count({ where: { userId: user.id } }),
+      ).toBe(1);
+      expect(await cycleCount(user.id)).toBe(1);
+    });
+
+    it("proposes the long break after the configured count and resets on it", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-propose-long");
+      const userDeps = depsFor(user.id, user.email);
+      const proposals: (string | null)[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        await start(userDeps, { intervalType: "focus" });
+        await backdateStart(user.id, 1500 + 60);
+        const done = await finalize("/api/timer/complete", userDeps);
+        expect(done.status).toBe(200);
+        proposals.push(done.body.next?.intervalType ?? null);
+      }
+      expect(proposals).toEqual([
+        "short_break",
+        "short_break",
+        "short_break",
+        "long_break",
+      ]);
+      expect(await cycleCount(user.id)).toBe(4);
+
+      await start(userDeps, { intervalType: "long_break" });
+      const reset = await finalize("/api/timer/complete", userDeps);
+      expect(reset.body.next).toEqual({ intervalType: "focus" });
+      expect(await cycleCount(user.id)).toBe(0);
+    });
+
+    it("auto-starts the proposed break, never on cancel", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-autostart", { autoStartBreaks: true });
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 60);
+
+      const done = await finalize("/api/timer/complete", userDeps);
+      expect(done.status).toBe(200);
+      expect(done.body.autoStarted).toMatchObject({
+        intervalType: "short_break",
+        status: "running",
+        plannedDurationSeconds: 300,
+        taskId: null,
+      });
+      expect(done.body.next).toBeNull();
+
+      const current = await getCurrent(userDeps);
+      expect(current.body.session?.id).toBe(done.body.autoStarted?.id);
+
+      // Cancelling the auto-started break starts nothing further.
+      const cancelled = await finalize("/api/timer/cancel", userDeps);
+      expect(cancelled.body.autoStarted).toBeNull();
+      expect(await activeCount(user.id)).toBe(0);
+      expect(
+        await db.timerSession.count({ where: { userId: user.id } }),
+      ).toBe(2);
+    });
+
+    it("keeps the running plan across settings edits", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-cutover", {});
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+
+      await db.userSettings.update({
+        where: { userId: user.id },
+        data: { focusDurationSeconds: 60 },
+      });
+      const current = await getCurrent(userDeps);
+      expect(current.body.session?.plannedDurationSeconds).toBe(1500);
+
+      await finalize("/api/timer/complete", userDeps);
+      const fresh = await start(userDeps, { intervalType: "focus" });
+      expect(fresh.session!.plannedDurationSeconds).toBe(60);
+    });
+
+    it("never reconciles a paused interval, however long it sits", async () => {
+      await ensureReady();
+      const user = await makeUser("timer-paused-expiry");
+      const userDeps = depsFor(user.id, user.email);
+      await start(userDeps, { intervalType: "focus" });
+      await backdateStart(user.id, 1500 + 7200);
+      expect(
+        (await createPauseTimerHandler(userDeps)(actionReq("/api/timer/pause")))
+          .status,
+      ).toBe(200);
+
+      const current = await getCurrent(userDeps);
+      expect(current.body.session?.status).toBe("paused");
+      expect(current.body.reconciled).toBeNull();
+      expect(current.body.pendingConfirmation).toBeNull();
+      expect(await cycleCount(user.id)).toBe(0);
     });
 
     it("rejects illegal pause/resume moves with 409", async () => {

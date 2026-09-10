@@ -98,10 +98,91 @@ export class TimerServiceError extends Error {
   }
 }
 
-export type CycleOp =
-  | { kind: "none" }
-  | { kind: "increment" }
-  | { kind: "reset" };
+export type FinalizeMode = "complete" | "cancel" | "skip";
+
+export interface TimerSettings {
+  focusDurationSeconds: number;
+  shortBreakSeconds: number;
+  longBreakSeconds: number;
+  intervalsBeforeLongBreak: number;
+  autoStartBreaks: boolean;
+  autoStartFocus: boolean;
+}
+
+/**
+ * Saved-settings defaults (spec §10.2 + §6): row-less users (pre-04 shape)
+ * start from these instead of failing — GET /api/settings bootstraps the
+ * persisted row separately.
+ */
+export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
+  focusDurationSeconds: 1500,
+  shortBreakSeconds: 300,
+  longBreakSeconds: 900,
+  intervalsBeforeLongBreak: 4,
+  autoStartBreaks: false,
+  autoStartFocus: false,
+};
+
+/** Auto-start context for a finalize write (spec §8.5). Never on cancel. */
+export interface FinalizeAutoStart {
+  onFocusComplete: boolean;
+  onBreakFinalize: boolean;
+  focusSeconds: number;
+  shortSeconds: number;
+  longSeconds: number;
+}
+
+export interface CycleInfo {
+  completedFocusCount: number;
+  intervalsBeforeLongBreak: number;
+}
+
+export interface NextProposal {
+  intervalType: IntervalType;
+}
+
+/**
+ * Finalize outcome (issue 11): the finalized row plus what the client
+ * should do next. `next` is the break/focus proposal when the user must
+ * act (`null` once `autoStarted` already started it); `autoStarted` is
+ * non-null only when *this call* created the next interval — idempotent
+ * replays report `null` so the completion is announced exactly once.
+ */
+export interface FinalizeResult {
+  session: PublicSession;
+  autoStarted: PublicSession | null;
+  cycle: CycleInfo;
+  next: NextProposal | null;
+}
+
+/**
+ * Lazy-reconcile outcome for `current` (spec §8.4): exactly one of
+ * `session` (still active), `reconciled` (auto-completed by this call),
+ * or `pendingConfirmation` (expired past the grace window — finalize only
+ * via explicit complete = Complete / cancel = Discard) is populated
+ * alongside the always-present `cycle` standing count.
+ */
+export interface CurrentResult {
+  session: PublicSession | null;
+  reconciled: PublicSession | null;
+  pendingConfirmation: {
+    session: PublicSession;
+    overdueSeconds: number;
+  } | null;
+  autoStarted: PublicSession | null;
+  cycle: CycleInfo;
+  next: NextProposal | null;
+}
+
+/**
+ * Lazy-reconcile grace window (spec §8.4, decision 02): a running interval
+ * that expired while the app was closed auto-finalizes as completed when
+ * the user returns within 60 minutes past `expected_end_at`; beyond that
+ * the client must confirm (Complete/Discard) and the server finalizes only
+ * on that explicit action. Paused intervals never expire — paused time is
+ * frozen and excluded from expiry math.
+ */
+export const RECONCILE_GRACE_SECONDS = 3600;
 
 /**
  * Idempotency-key retention (SYSTEM_DESIGN §6 "short TTL"): finalize keys
@@ -131,11 +212,8 @@ export interface TaskSnapshot {
  * count, single `$transaction` for finalize; see prisma-store.ts).
  */
 export interface TimerStore {
-  getDurations(userId: string): Promise<{
-    focusDurationSeconds: number;
-    shortBreakSeconds: number;
-    longBreakSeconds: number;
-  }>;
+  getTimerSettings(userId: string): Promise<TimerSettings>;
+  getCycleCount(userId: string): Promise<number>;
   findTaskSnapshot(
     userId: string,
     taskId: string,
@@ -164,23 +242,37 @@ export interface TimerStore {
     userId: string,
     now: Date,
   ): Promise<{ ok: true; row: TimerRow } | { ok: false; reason: "NO_ACTIVE" | "NOT_PAUSED" }>;
+  /**
+   * One transaction (spec §10.6): the status flip, snapshot write,
+   * idempotency-key insert, focus-cycle update, and any auto-started next
+   * interval land atomically. Duration math and the cycle verdict are
+   * computed from the row as read *inside* the write — the caller passes
+   * `mode` + `at`, never a precomputed `actual` — so a concurrent
+   * pause/resume between the service's read and this write cannot skew the
+   * recorded minutes or the increment (issue 11 hardening).
+   */
   tryFinalize(
     userId: string,
     input: {
       key: string | null;
-      status: "completed" | "cancelled";
-      actualDurationSeconds: number;
+      mode: FinalizeMode;
+      at: Date;
       taskTitleSnapshot: string | null;
       categorySnapshot: string | null;
-      at: Date;
-      cycleOp: CycleOp;
+      intervalsBeforeLongBreak: number;
+      autoStart: FinalizeAutoStart | null;
       /** Optimistic guard: finalize only this row when provided. */
       expectActiveId?: string;
       /** Skip-break may only finalize a break, never a focus interval. */
       requireBreak?: boolean;
     },
   ): Promise<
-    | { ok: true; row: TimerRow }
+    | {
+        ok: true;
+        row: TimerRow;
+        cycleCount: number;
+        autoStarted: TimerRow | null;
+      }
     | { ok: false; reason: "NO_ACTIVE" | "NOT_A_BREAK" | "KEY_CONFLICT" }
   >;
 }
@@ -237,6 +329,43 @@ export function isFullExpiry(input: {
   return input.effectiveEnd.getTime() >= input.expectedEndAt.getTime();
 }
 
+/**
+ * Break proposal (spec §8.5): after the configured number of completed
+ * focus intervals the next proposed break is long, otherwise short.
+ * `completedFocusCount` is the post-finalize count — only full-expiry
+ * focus completions increment it, so complete-early never flips a short
+ * proposal to long by itself.
+ */
+export function nextBreakFor(
+  completedFocusCount: number,
+  intervalsBeforeLongBreak: number,
+): "short_break" | "long_break" {
+  if (completedFocusCount <= 0) return "short_break";
+  return completedFocusCount % intervalsBeforeLongBreak === 0
+    ? "long_break"
+    : "short_break";
+}
+
+/**
+ * Next-interval proposal after a finalization (spec §8.5): a completed
+ * focus proposes the break matching the post-finalize count; a cancelled
+ * focus (incl. Discard) proposes a retry; any break finalization hands
+ * back to focus. Top-level + exported so the Prisma store shares the exact
+ * rule inside its finalize transaction (auto-start creation) instead of
+ * restating the switch.
+ */
+export function proposalForInterval(
+  intervalType: IntervalType,
+  status: SessionStatus,
+  cycleCount: number,
+  intervalsBeforeLongBreak: number,
+): IntervalType {
+  if (intervalType === "focus" && status === "completed") {
+    return nextBreakFor(cycleCount, intervalsBeforeLongBreak);
+  }
+  return "focus";
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -286,14 +415,97 @@ export function createTimerService(ports: TimerPorts) {
     }
   }
 
-  async function replayFinalize(
+  async function replaySession(
     userId: string,
     key: string,
-  ): Promise<PublicSession | null> {
+  ): Promise<TimerRow | null> {
     const record = await ports.store.findIdempotency(userId, key);
     if (!record) return null;
-    const row = await ports.store.findSessionById(userId, record.sessionId);
-    return row ? toPublicSession(row) : null;
+    return ports.store.findSessionById(userId, record.sessionId);
+  }
+
+  /**
+   * What the client should start next after a finalization (spec §8.5):
+   * a completed focus proposes the break matching the post-finalize
+   * count; a cancelled focus (incl. Discard) proposes a retry; any break
+   * finalization hands back to focus.
+   */
+  function proposalFor(
+    row: TimerRow,
+    cycleCount: number,
+    intervalsBeforeLongBreak: number,
+  ): IntervalType {
+    return proposalForInterval(
+      row.intervalType,
+      row.status,
+      cycleCount,
+      intervalsBeforeLongBreak,
+    );
+  }
+
+  function finalizeEnvelope(
+    row: TimerRow,
+    autoStarted: TimerRow | null,
+    cycleCount: number,
+    intervalsBeforeLongBreak: number,
+  ): FinalizeResult {
+    const proposal = proposalFor(row, cycleCount, intervalsBeforeLongBreak);
+    return {
+      session: toPublicSession(row),
+      autoStarted: autoStarted ? toPublicSession(autoStarted) : null,
+      cycle: { completedFocusCount: cycleCount, intervalsBeforeLongBreak },
+      // Once the next interval is running there is nothing left to propose.
+      next: autoStarted ? null : { intervalType: proposal },
+    };
+  }
+
+  /** Idle proposal for `current`: re-derive the break nudge from the latest
+   * finalized row so a refresh after completion (auto-start off) keeps the
+   * proposal the finalize call delivered. */
+  function idleProposal(
+    latest: TimerRow | null,
+    cycleCount: number,
+    intervalsBeforeLongBreak: number,
+  ): NextProposal {
+    if (
+      latest &&
+      latest.intervalType === "focus" &&
+      latest.status === "completed"
+    ) {
+      return {
+        intervalType: nextBreakFor(cycleCount, intervalsBeforeLongBreak),
+      };
+    }
+    return { intervalType: "focus" };
+  }
+
+  async function snapshotsFor(
+    userId: string,
+    taskId: string | null,
+  ): Promise<{ taskTitleSnapshot: string | null; categorySnapshot: string | null }> {
+    if (!taskId) return { taskTitleSnapshot: null, categorySnapshot: null };
+    // Resilience over strictness: a task that vanished mid-interval
+    // must not block finalization — snapshots fall back to null and
+    // history still records the interval.
+    const task = await ports.store.findTaskSnapshot(userId, taskId);
+    if (!task) return { taskTitleSnapshot: null, categorySnapshot: null };
+    return { taskTitleSnapshot: task.title, categorySnapshot: task.category };
+  }
+
+  function autoStartFor(
+    mode: FinalizeMode,
+    settings: TimerSettings,
+  ): FinalizeAutoStart | null {
+    // An explicit abort (cancel, incl. Discard from the expired-confirm
+    // dialog) never auto-starts — the user just asked to stop.
+    if (mode === "cancel") return null;
+    return {
+      onFocusComplete: settings.autoStartBreaks,
+      onBreakFinalize: settings.autoStartFocus,
+      focusSeconds: settings.focusDurationSeconds,
+      shortSeconds: settings.shortBreakSeconds,
+      longSeconds: settings.longBreakSeconds,
+    };
   }
 
   /**
@@ -307,10 +519,19 @@ export function createTimerService(ports: TimerPorts) {
   async function resolveNoActive(
     userId: string,
     key: string | null,
-  ): Promise<PublicSession> {
+  ): Promise<FinalizeResult> {
     if (key !== null) {
-      const replayed = await replayFinalize(userId, key);
-      if (replayed) return replayed;
+      const replayed = await replaySession(userId, key);
+      if (replayed) {
+        const settings = await ports.store.getTimerSettings(userId);
+        const cycleCount = await ports.store.getCycleCount(userId);
+        return finalizeEnvelope(
+          replayed,
+          null,
+          cycleCount,
+          settings.intervalsBeforeLongBreak,
+        );
+      }
     }
     const latest = await ports.store.findLatest(userId);
     if (latest) {
@@ -327,17 +548,26 @@ export function createTimerService(ports: TimerPorts) {
 
   async function finalize(
     userId: string,
-    mode: "complete" | "cancel" | "skip",
+    mode: FinalizeMode,
     rawKey: unknown,
-  ): Promise<PublicSession> {
+  ): Promise<FinalizeResult> {
     const key = parseIdempotencyKey(rawKey);
     const now = ports.now();
 
     // Fast-path replay: same key twice returns the original outcome
     // without touching the cycle count (SYSTEM_DESIGN §6).
     if (key !== null) {
-      const replayed = await replayFinalize(userId, key);
-      if (replayed) return replayed;
+      const replayed = await replaySession(userId, key);
+      if (replayed) {
+        const settings = await ports.store.getTimerSettings(userId);
+        const cycleCount = await ports.store.getCycleCount(userId);
+        return finalizeEnvelope(
+          replayed,
+          null,
+          cycleCount,
+          settings.intervalsBeforeLongBreak,
+        );
+      }
     }
 
     const active = await ports.store.findActive(userId);
@@ -349,65 +579,44 @@ export function createTimerService(ports: TimerPorts) {
       );
     }
 
-    const effectiveEnd =
-      active.status === "paused" && active.pausedAt ? active.pausedAt : now;
-    const actualDurationSeconds = computeActualDurationSeconds({
-      startedAt: active.startedAt,
-      effectiveEnd,
-      accumulatedPauseSeconds: active.accumulatedPauseSeconds,
-      plannedDurationSeconds: active.plannedDurationSeconds,
-    });
-    const reachedFullExpiry = isFullExpiry({
-      effectiveEnd,
-      expectedEndAt: active.expectedEndAt,
-    });
+    const settings = await ports.store.getTimerSettings(userId);
+    const snapshots = await snapshotsFor(userId, active.taskId);
 
-    let taskTitleSnapshot: string | null = null;
-    let categorySnapshot: string | null = null;
-    if (active.taskId) {
-      // Resilience over strictness: a task that vanished mid-interval
-      // must not block finalization — snapshots fall back to null and
-      // history still records the interval.
-      const task = await ports.store.findTaskSnapshot(userId, active.taskId);
-      if (task) {
-        taskTitleSnapshot = task.title;
-        categorySnapshot = task.category;
-      }
-    }
-
-    // Cycle rules (spec §8.5, decision 02): only full-expiry focus
-    // completions increment; completing or skipping a long break resets;
-    // cancelling (incl. Discard) never touches the count. Breaks never
-    // contribute focus minutes (analytics sums completed focus only).
-    let cycleOp: CycleOp = { kind: "none" };
-    if (mode === "complete" && active.intervalType === "focus" && reachedFullExpiry) {
-      cycleOp = { kind: "increment" };
-    } else if (
-      (mode === "complete" || mode === "skip") &&
-      active.intervalType === "long_break"
-    ) {
-      cycleOp = { kind: "reset" };
-    }
-
-    const status = mode === "complete" ? "completed" : "cancelled";
     const result = await ports.store.tryFinalize(userId, {
       key,
-      status,
-      actualDurationSeconds,
-      taskTitleSnapshot,
-      categorySnapshot,
+      mode,
       at: now,
-      cycleOp,
+      taskTitleSnapshot: snapshots.taskTitleSnapshot,
+      categorySnapshot: snapshots.categorySnapshot,
+      intervalsBeforeLongBreak: settings.intervalsBeforeLongBreak,
+      autoStart: autoStartFor(mode, settings),
       expectActiveId: active.id,
       requireBreak: mode === "skip",
     });
-    if (result.ok) return toPublicSession(result.row);
+    if (result.ok) {
+      return finalizeEnvelope(
+        result.row,
+        result.autoStarted,
+        result.cycleCount,
+        settings.intervalsBeforeLongBreak,
+      );
+    }
     switch (result.reason) {
       case "KEY_CONFLICT": {
         // Concurrent same-key winner already landed: replay it (exactly
         // once finalize, one cycle bump max — TEST_STRATEGY timer map).
-        const replayed = key !== null ? await replayFinalize(userId, key) : null;
-        if (replayed) return replayed;
+        if (key !== null) {
+          const replayed = await replaySession(userId, key);
+          if (replayed) {
+            const cycleCount = await ports.store.getCycleCount(userId);
+            return finalizeEnvelope(
+              replayed,
+              null,
+              cycleCount,
+              settings.intervalsBeforeLongBreak,
+            );
+          }
+        }
         throw new TimerServiceError(
           "ALREADY_FINALIZED",
           "This interval was already finalized.",
@@ -424,9 +633,143 @@ export function createTimerService(ports: TimerPorts) {
   }
 
   return {
-    async current(userId: string): Promise<{ session: PublicSession | null }> {
+    async current(userId: string): Promise<CurrentResult> {
+      const now = ports.now();
+      const settings = await ports.store.getTimerSettings(userId);
+      const threshold = settings.intervalsBeforeLongBreak;
+      const count = await ports.store.getCycleCount(userId);
+      const cycle: CycleInfo = {
+        completedFocusCount: count,
+        intervalsBeforeLongBreak: threshold,
+      };
+
       const active = await ports.store.findActive(userId);
-      return { session: active ? toPublicSession(active) : null };
+      if (!active) {
+        const latest = await ports.store.findLatest(userId);
+        return {
+          session: null,
+          reconciled: null,
+          pendingConfirmation: null,
+          autoStarted: null,
+          cycle,
+          next: idleProposal(latest, count, threshold),
+        };
+      }
+      // Paused time is frozen (SYSTEM_DESIGN §4): a paused interval never
+      // expires no matter how long it sits, and a running interval that
+      // has not reached its expected end needs no reconciliation.
+      if (active.status === "paused" || now.getTime() < active.expectedEndAt.getTime()) {
+        return {
+          session: toPublicSession(active),
+          reconciled: null,
+          pendingConfirmation: null,
+          autoStarted: null,
+          cycle,
+          next: null,
+        };
+      }
+
+      const overdueMs = now.getTime() - active.expectedEndAt.getTime();
+      if (overdueMs > RECONCILE_GRACE_SECONDS * 1000) {
+        // Beyond the grace window the server must NOT finalize: the client
+        // shows the Complete/Discard confirm dialog (prototype
+        // workspace.html) and finalizes only via explicit complete/cancel.
+        const session = toPublicSession(active);
+        return {
+          session,
+          reconciled: null,
+          pendingConfirmation: {
+            session,
+            overdueSeconds: Math.floor(overdueMs / 1000),
+          },
+          autoStarted: null,
+          cycle,
+          next: null,
+        };
+      }
+
+      // Within the grace window: lazy auto-finalize as completed exactly
+      // once (spec §8.4). The server owns the key (`reconcile:<id>`) so
+      // concurrent `current` calls arbitrate through the same idempotency
+      // path as client double-submits; the losers replay the winner.
+      const key = `reconcile:${active.id}`;
+      const snapshots = await snapshotsFor(userId, active.taskId);
+      const result = await ports.store.tryFinalize(userId, {
+        key,
+        mode: "complete",
+        at: now,
+        taskTitleSnapshot: snapshots.taskTitleSnapshot,
+        categorySnapshot: snapshots.categorySnapshot,
+        intervalsBeforeLongBreak: threshold,
+        autoStart: autoStartFor("complete", settings),
+        expectActiveId: active.id,
+      });
+      if (result.ok) {
+        const envelope = finalizeEnvelope(
+          result.row,
+          result.autoStarted,
+          result.cycleCount,
+          threshold,
+        );
+        return {
+          session: envelope.autoStarted,
+          reconciled: envelope.session,
+          pendingConfirmation: null,
+          autoStarted: envelope.autoStarted,
+          cycle: envelope.cycle,
+          next: envelope.next,
+        };
+      }
+      if (result.reason === "KEY_CONFLICT") {
+        const winner = await replaySession(userId, key);
+        if (winner) {
+          const freshCount = await ports.store.getCycleCount(userId);
+          const started = await ports.store.findActive(userId);
+          const proposal = proposalFor(winner, freshCount, threshold);
+          return {
+            session: started ? toPublicSession(started) : null,
+            reconciled: toPublicSession(winner),
+            pendingConfirmation: null,
+            // Exactly-once announcement: the sibling call created the
+            // interval, so this replay claims no creation. The proposal
+            // still travels when nothing is running yet.
+            autoStarted: null,
+            cycle: {
+              completedFocusCount: freshCount,
+              intervalsBeforeLongBreak: threshold,
+            },
+            next: started ? null : { intervalType: proposal },
+          };
+        }
+      }
+      // NO_ACTIVE: an explicit finalize won the race between our read and
+      // our write — its response carried the announcement, so report the
+      // plain post-state. (KEY_CONFLICT with a missing key row cannot
+      // happen; the fallback below covers it defensively.)
+      const reread = await ports.store.findActive(userId);
+      if (!reread) {
+        const latest = await ports.store.findLatest(userId);
+        const freshCount = await ports.store.getCycleCount(userId);
+        return {
+          session: null,
+          reconciled: null,
+          pendingConfirmation: null,
+          autoStarted: null,
+          cycle: {
+            completedFocusCount: freshCount,
+            intervalsBeforeLongBreak: threshold,
+          },
+          next: idleProposal(latest, freshCount, threshold),
+        };
+      }
+      return {
+        session: toPublicSession(reread),
+        reconciled: null,
+        pendingConfirmation: null,
+        autoStarted: null,
+        cycle,
+        next: null,
+      };
     },
 
     async start(userId: string, input: unknown): Promise<PublicSession> {
@@ -453,7 +796,7 @@ export function createTimerService(ports: TimerPorts) {
           );
         }
       }
-      const durations = await ports.store.getDurations(userId);
+      const durations = await ports.store.getTimerSettings(userId);
       const plannedDurationSeconds = plannedFor(data.intervalType, durations);
       const startedAt = ports.now();
       const expectedEndAt = new Date(
@@ -516,21 +859,21 @@ export function createTimerService(ports: TimerPorts) {
     async complete(
       userId: string,
       opts: { idempotencyKey?: unknown } = {},
-    ): Promise<PublicSession> {
+    ): Promise<FinalizeResult> {
       return finalize(userId, "complete", opts.idempotencyKey ?? null);
     },
 
     async cancel(
       userId: string,
       opts: { idempotencyKey?: unknown } = {},
-    ): Promise<PublicSession> {
+    ): Promise<FinalizeResult> {
       return finalize(userId, "cancel", opts.idempotencyKey ?? null);
     },
 
     async skipBreak(
       userId: string,
       opts: { idempotencyKey?: unknown } = {},
-    ): Promise<PublicSession> {
+    ): Promise<FinalizeResult> {
       return finalize(userId, "skip", opts.idempotencyKey ?? null);
     },
   };

@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   TimerServiceError,
+  RECONCILE_GRACE_SECONDS,
   computeActualDurationSeconds,
   computeElapsedSeconds,
   createTimerService,
   isFullExpiry,
+  nextBreakFor,
+  type FinalizeAutoStart,
   type TimerPorts,
   type TimerRow,
+  type TimerSettings,
 } from "./service";
 /**
  * Seam 2 (unit, hermetic): timer domain logic over an in-memory fake store.
@@ -40,26 +44,49 @@ interface FakeDb {
   keys: { userId: string; key: string; sessionId: string; createdAt: Date }[];
   tasks: FakeTask[];
   cycleCounts: Map<string, number>;
-  durations: Map<string, { focusDurationSeconds: number; shortBreakSeconds: number; longBreakSeconds: number }>;
+  timerSettings: Map<string, TimerSettings>;
+  /**
+   * Test-only stale-read hook (issue 11 hardening): when non-zero,
+   * `findActive` returns a *copy* whose expected end is shifted forward by
+   * this many seconds while the stored row is untouched — simulating a
+   * pause/resume that landed between the service's read and its write.
+   */
+  spoofActiveShiftSeconds: number;
 }
 
 function fakePorts(db: FakeDb, clock: { now: Date }): TimerPorts {
-  const activeOf = (userId: string): TimerRow | null =>
+  const liveActiveOf = (userId: string): TimerRow | null =>
     db.sessions.find(
       (s) =>
         s.userId === userId && (s.status === "running" || s.status === "paused"),
     ) ?? null;
+  const activeOf = (userId: string): TimerRow | null => {
+    const live = liveActiveOf(userId);
+    if (!live || db.spoofActiveShiftSeconds === 0) return live;
+    return {
+      ...live,
+      expectedEndAt: new Date(
+        live.expectedEndAt.getTime() + db.spoofActiveShiftSeconds * 1000,
+      ),
+    };
+  };
   return {
     now: () => clock.now,
     store: {
-      async getDurations(userId) {
+      async getTimerSettings(userId) {
         return (
-          db.durations.get(userId) ?? {
+          db.timerSettings.get(userId) ?? {
             focusDurationSeconds: 1500,
             shortBreakSeconds: 300,
             longBreakSeconds: 900,
+            intervalsBeforeLongBreak: 4,
+            autoStartBreaks: false,
+            autoStartFocus: false,
           }
         );
+      },
+      async getCycleCount(userId) {
+        return db.cycleCounts.get(userId) ?? 0;
       },
       async findTaskSnapshot(userId, taskId) {
         const task = db.tasks.find(
@@ -159,7 +186,10 @@ function fakePorts(db: FakeDb, clock: { now: Date }): TimerPorts {
         ) {
           return { ok: false as const, reason: "KEY_CONFLICT" as const };
         }
-        const active = activeOf(userId);
+        // Hardening parity with the Prisma store: math and the cycle
+        // verdict read the LIVE row at write time, never the (possibly
+        // spoofed) pre-write snapshot the service passed in.
+        const active = liveActiveOf(userId);
         if (!active) {
           return { ok: false as const, reason: "NO_ACTIVE" as const };
         }
@@ -169,17 +199,41 @@ function fakePorts(db: FakeDb, clock: { now: Date }): TimerPorts {
         if (input.requireBreak && active.intervalType === "focus") {
           return { ok: false as const, reason: "NOT_A_BREAK" as const };
         }
-        active.status = input.status;
-        active.actualDurationSeconds = input.actualDurationSeconds;
+        const effectiveEnd =
+          active.status === "paused" && active.pausedAt
+            ? active.pausedAt
+            : input.at;
+        const actualDurationSeconds = computeActualDurationSeconds({
+          startedAt: active.startedAt,
+          effectiveEnd,
+          accumulatedPauseSeconds: active.accumulatedPauseSeconds,
+          plannedDurationSeconds: active.plannedDurationSeconds,
+        });
+        const reachedFullExpiry = isFullExpiry({
+          effectiveEnd,
+          expectedEndAt: active.expectedEndAt,
+        });
+        const status = input.mode === "complete" ? "completed" : "cancelled";
+        const cycleOp =
+          input.mode === "complete" &&
+          active.intervalType === "focus" &&
+          reachedFullExpiry
+            ? ("increment" as const)
+            : (input.mode === "complete" || input.mode === "skip") &&
+                active.intervalType === "long_break"
+              ? ("reset" as const)
+              : ("none" as const);
+        active.status = status;
+        active.actualDurationSeconds = actualDurationSeconds;
         active.taskTitleSnapshot = input.taskTitleSnapshot;
         active.categorySnapshot = input.categorySnapshot;
-        if (input.status === "completed") active.completedAt = input.at;
+        if (status === "completed") active.completedAt = input.at;
         else active.cancelledAt = input.at;
         active.pausedAt = null;
         active.updatedAt = input.at;
-        if (input.cycleOp.kind === "increment") {
+        if (cycleOp === "increment") {
           db.cycleCounts.set(userId, (db.cycleCounts.get(userId) ?? 0) + 1);
-        } else if (input.cycleOp.kind === "reset") {
+        } else if (cycleOp === "reset") {
           db.cycleCounts.set(userId, 0);
         }
         if (input.key !== null) {
@@ -190,28 +244,84 @@ function fakePorts(db: FakeDb, clock: { now: Date }): TimerPorts {
             createdAt: input.at,
           });
         }
+        const cycleCount = db.cycleCounts.get(userId) ?? 0;
+        const proposal =
+          status === "completed" && active.intervalType === "focus"
+            ? nextBreakFor(cycleCount, input.intervalsBeforeLongBreak)
+            : ("focus" as const);
+        let autoStarted: TimerRow | null = null;
+        const auto: FinalizeAutoStart | null = input.autoStart;
+        const wantsAutoStart =
+          auto !== null &&
+          ((input.mode === "complete" &&
+            active.intervalType === "focus" &&
+            auto.onFocusComplete) ||
+            ((input.mode === "complete" || input.mode === "skip") &&
+              active.intervalType !== "focus" &&
+              auto.onBreakFinalize));
+        if (wantsAutoStart && auto !== null) {
+          const plannedDurationSeconds =
+            proposal === "focus"
+              ? auto.focusSeconds
+              : proposal === "short_break"
+                ? auto.shortSeconds
+                : auto.longSeconds;
+          autoStarted = {
+            id: uuid(),
+            userId,
+            taskId: null,
+            taskTitleSnapshot: null,
+            categorySnapshot: null,
+            intervalType: proposal,
+            status: "running",
+            plannedDurationSeconds,
+            actualDurationSeconds: null,
+            startedAt: input.at,
+            expectedEndAt: new Date(
+              input.at.getTime() + plannedDurationSeconds * 1000,
+            ),
+            pausedAt: null,
+            accumulatedPauseSeconds: 0,
+            completedAt: null,
+            cancelledAt: null,
+            createdAt: input.at,
+            updatedAt: input.at,
+          };
+          db.sessions.push(autoStarted);
+        }
         // Hygiene parity with the Prisma store (IDEMPOTENCY_TTL_MS lazy prune).
         db.keys = db.keys.filter(
           (k) =>
             k.userId !== userId ||
             k.createdAt.getTime() > input.at.getTime() - 24 * 60 * 60 * 1000,
         );
-        return { ok: true as const, row: active };
+        return { ok: true as const, row: active, cycleCount, autoStarted };
       },
     },
   };
 }
 
-function setup(durations?: { focusDurationSeconds: number; shortBreakSeconds: number; longBreakSeconds: number }) {
+function setup(partialSettings?: Partial<TimerSettings>) {
   const db: FakeDb = {
     sessions: [],
     keys: [],
     tasks: [],
     cycleCounts: new Map(),
-    durations: new Map(),
+    timerSettings: new Map(),
+    spoofActiveShiftSeconds: 0,
   };
   const clock = { now: T0 };
-  if (durations) db.durations.set("user-1", durations);
+  if (partialSettings) {
+    db.timerSettings.set("user-1", {
+      focusDurationSeconds: 1500,
+      shortBreakSeconds: 300,
+      longBreakSeconds: 900,
+      intervalsBeforeLongBreak: 4,
+      autoStartBreaks: false,
+      autoStartFocus: false,
+      ...partialSettings,
+    });
+  }
   const service = createTimerService(fakePorts(db, clock));
   return { db, clock, service };
 }
@@ -269,11 +379,32 @@ describe("pure pause/cycle math", () => {
   });
 });
 
+describe("break proposal (spec §8.5)", () => {
+  it("proposes a long break exactly when the count reaches the configured threshold", () => {
+    // Threshold 4: counts 1–3 propose short, count 4 proposes long.
+    expect(nextBreakFor(1, 4)).toBe("short_break");
+    expect(nextBreakFor(3, 4)).toBe("short_break");
+    expect(nextBreakFor(4, 4)).toBe("long_break");
+    // Past the threshold the next cycle starts over (count 5 → short).
+    expect(nextBreakFor(5, 4)).toBe("short_break");
+    expect(nextBreakFor(8, 4)).toBe("long_break");
+    // Degenerate threshold 1: every focus earns a long break.
+    expect(nextBreakFor(1, 1)).toBe("long_break");
+    // A reset count proposes short.
+    expect(nextBreakFor(0, 4)).toBe("short_break");
+  });
+});
+
 describe("current", () => {
   it("returns null when idle", async () => {
     const { service } = setup();
-    await expect(service.current("user-1")).resolves.toEqual({
+    await expect(service.current("user-1")).resolves.toMatchObject({
       session: null,
+      reconciled: null,
+      pendingConfirmation: null,
+      autoStarted: null,
+      cycle: { completedFocusCount: 0, intervalsBeforeLongBreak: 4 },
+      next: { intervalType: "focus" },
     });
   });
 });
@@ -397,15 +528,39 @@ describe("pause / resume", () => {
 });
 
 describe("complete / cancel", () => {
+  it("finalizes from write-time state when the pre-write snapshot went stale", async () => {
+    // Pause/finalize race (issue 11 hardening): the service's pre-write
+    // read sees a copy whose expected end still lies ahead, while the
+    // stored row already expired. The write must still record bounded
+    // minutes and the full-expiry cycle increment — computed from the row
+    // as read inside the write, never from the stale snapshot.
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1600);
+    db.spoofActiveShiftSeconds = 9999;
+    const done = await service.complete("user-1", {});
+    expect(done.session).toMatchObject({
+      status: "completed",
+      actualDurationSeconds: 1500,
+    });
+    expect(done.cycle.completedFocusCount).toBe(1);
+  });
+
   it("completes early with elapsed minutes but no cycle increment", async () => {
     const { clock, db, service } = setup();
     await service.start("user-1", { intervalType: "focus" });
     clock.now = at(600);
     const done = await service.complete("user-1", {});
-    expect(done).toMatchObject({
+    expect(done.session).toMatchObject({
       status: "completed",
       actualDurationSeconds: 600,
     });
+    expect(done.cycle).toMatchObject({
+      completedFocusCount: 0,
+      intervalsBeforeLongBreak: 4,
+    });
+    expect(done.next).toEqual({ intervalType: "short_break" });
+    expect(done.autoStarted).toBeNull();
     expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
   });
 
@@ -414,10 +569,12 @@ describe("complete / cancel", () => {
     await service.start("user-1", { intervalType: "focus" });
     clock.now = at(1500);
     const done = await service.complete("user-1", {});
-    expect(done).toMatchObject({
+    expect(done.session).toMatchObject({
       status: "completed",
       actualDurationSeconds: 1500,
     });
+    expect(done.cycle.completedFocusCount).toBe(1);
+    expect(done.next).toEqual({ intervalType: "short_break" });
     expect(db.cycleCounts.get("user-1")).toBe(1);
   });
 
@@ -426,7 +583,7 @@ describe("complete / cancel", () => {
     await service.start("user-1", { intervalType: "focus" });
     clock.now = at(2000);
     const done = await service.complete("user-1", {});
-    expect(done.actualDurationSeconds).toBe(1500);
+    expect(done.session.actualDurationSeconds).toBe(1500);
   });
 
   it("excludes paused gaps from the actual duration on finalize", async () => {
@@ -439,7 +596,7 @@ describe("complete / cancel", () => {
     clock.now = at(700);
     // 100s before pause + 300s after resume = 400s of focus.
     const done = await service.complete("user-1", {});
-    expect(done.actualDurationSeconds).toBe(400);
+    expect(done.session.actualDurationSeconds).toBe(400);
   });
 
   it("finalizes a paused interval from the pause timestamp, not the finalize time", async () => {
@@ -449,7 +606,7 @@ describe("complete / cancel", () => {
     await service.pause("user-1");
     clock.now = at(9999);
     const done = await service.complete("user-1", {});
-    expect(done.actualDurationSeconds).toBe(100);
+    expect(done.session.actualDurationSeconds).toBe(100);
   });
 
   it("writes task/category snapshots on finalize", async () => {
@@ -465,7 +622,7 @@ describe("complete / cancel", () => {
     });
     await service.start("user-1", { intervalType: "focus", taskId });
     const done = await service.complete("user-1", {});
-    expect(done).toMatchObject({
+    expect(done.session).toMatchObject({
       taskTitleSnapshot: "Trip",
       categorySnapshot: "travel",
     });
@@ -476,7 +633,9 @@ describe("complete / cancel", () => {
     await service.start("user-1", { intervalType: "focus" });
     clock.now = at(1500);
     const cancelled = await service.cancel("user-1", {});
-    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.session.status).toBe("cancelled");
+    expect(cancelled.next).toEqual({ intervalType: "focus" });
+    expect(cancelled.autoStarted).toBeNull();
     expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
   });
 
@@ -486,8 +645,9 @@ describe("complete / cancel", () => {
     clock.now = at(1500);
     const first = await service.complete("user-1", { idempotencyKey: "key-1" });
     const second = await service.complete("user-1", { idempotencyKey: "key-1" });
-    expect(second.id).toBe(first.id);
-    expect(second.status).toBe("completed");
+    expect(second.session.id).toBe(first.session.id);
+    expect(second.session.status).toBe("completed");
+    expect(second.autoStarted).toBeNull();
     expect(db.cycleCounts.get("user-1")).toBe(1);
     expect(db.sessions).toHaveLength(1);
   });
@@ -543,7 +703,8 @@ describe("skip-break and long-break cycle reset", () => {
     db.cycleCounts.set("user-1", 2);
     await service.start("user-1", { intervalType: "short_break" });
     const skipped = await service.skipBreak("user-1", {});
-    expect(skipped.status).toBe("cancelled");
+    expect(skipped.session.status).toBe("cancelled");
+    expect(skipped.next).toEqual({ intervalType: "focus" });
     expect(db.cycleCounts.get("user-1")).toBe(2);
   });
 
@@ -552,13 +713,14 @@ describe("skip-break and long-break cycle reset", () => {
     db.cycleCounts.set("user-1", 3);
     await service.start("user-1", { intervalType: "long_break" });
     const done = await service.complete("user-1", {});
-    expect(done.status).toBe("completed");
+    expect(done.session.status).toBe("completed");
+    expect(done.next).toEqual({ intervalType: "focus" });
     expect(db.cycleCounts.get("user-1")).toBe(0);
 
     db.cycleCounts.set("user-1", 3);
     await service.start("user-1", { intervalType: "long_break" });
     const skipped = await service.skipBreak("user-1", {});
-    expect(skipped.status).toBe("cancelled");
+    expect(skipped.session.status).toBe("cancelled");
     expect(db.cycleCounts.get("user-1")).toBe(0);
   });
 
@@ -567,6 +729,302 @@ describe("skip-break and long-break cycle reset", () => {
     await service.start("user-1", { intervalType: "short_break" });
     await service.complete("user-1", {});
     expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
+  });
+});
+
+describe("break proposal at the configured threshold", () => {
+  async function completeFullFocus(
+    service: { start: (u: string, i: unknown) => Promise<unknown>; complete: (u: string, o?: { idempotencyKey?: unknown }) => Promise<{ session: { actualDurationSeconds: number | null }; cycle: { completedFocusCount: number }; next: { intervalType: string } | null }> },
+    clock: { now: Date },
+  ): Promise<{ intervalType: string } | null> {
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = new Date(clock.now.getTime() + 1600 * 1000);
+    const done = await service.complete("user-1", {});
+    return done.next;
+  }
+
+  it("proposes short breaks until the count reaches the threshold, then long", async () => {
+    const { clock, db, service } = setup();
+    expect(await completeFullFocus(service, clock)).toEqual({
+      intervalType: "short_break",
+    });
+    expect(await completeFullFocus(service, clock)).toEqual({
+      intervalType: "short_break",
+    });
+    expect(await completeFullFocus(service, clock)).toEqual({
+      intervalType: "short_break",
+    });
+    expect(await completeFullFocus(service, clock)).toEqual({
+      intervalType: "long_break",
+    });
+    expect(db.cycleCounts.get("user-1")).toBe(4);
+  });
+
+  it("keeps proposing short after a complete-early (no increment)", async () => {
+    const { clock, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(600);
+    const done = await service.complete("user-1", {});
+    expect(done.next).toEqual({ intervalType: "short_break" });
+  });
+
+  it("hands back to focus after any break finalization", async () => {
+    const { db, service } = setup();
+    db.cycleCounts.set("user-1", 4);
+    await service.start("user-1", { intervalType: "long_break" });
+    const done = await service.complete("user-1", {});
+    expect(done.next).toEqual({ intervalType: "focus" });
+  });
+});
+
+describe("auto-start (spec §8.5)", () => {
+  it("starts the proposed break after focus completion when enabled", async () => {
+    const { clock, db, service } = setup({ autoStartBreaks: true });
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500);
+    const done = await service.complete("user-1", {});
+    expect(done.session.status).toBe("completed");
+    expect(done.autoStarted).toMatchObject({
+      intervalType: "short_break",
+      status: "running",
+      plannedDurationSeconds: 300,
+      taskId: null,
+    });
+    expect(done.next).toBeNull();
+    expect(done.cycle.completedFocusCount).toBe(1);
+    // Exactly two rows: the finalized focus + the auto-started break.
+    expect(db.sessions).toHaveLength(2);
+  });
+
+  it("starts focus after a break finalization when enabled", async () => {
+    const { db, service } = setup({ autoStartFocus: true });
+    await service.start("user-1", { intervalType: "short_break" });
+    const done = await service.complete("user-1", {});
+    expect(done.autoStarted).toMatchObject({
+      intervalType: "focus",
+      status: "running",
+      plannedDurationSeconds: 1500,
+    });
+    expect(done.next).toBeNull();
+    expect(db.sessions).toHaveLength(2);
+  });
+
+  it("never auto-starts on cancel, even with both flags on", async () => {
+    const { db, service } = setup({
+      autoStartBreaks: true,
+      autoStartFocus: true,
+    });
+    await service.start("user-1", { intervalType: "focus" });
+    const cancelled = await service.cancel("user-1", {});
+    expect(cancelled.autoStarted).toBeNull();
+    expect(cancelled.next).toEqual({ intervalType: "focus" });
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it("auto-starts the long break once the threshold is reached", async () => {
+    const { clock, db, service } = setup({ autoStartBreaks: true });
+    db.cycleCounts.set("user-1", 3);
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500);
+    const done = await service.complete("user-1", {});
+    expect(done.cycle.completedFocusCount).toBe(4);
+    expect(done.autoStarted).toMatchObject({
+      intervalType: "long_break",
+      plannedDurationSeconds: 900,
+    });
+  });
+});
+
+describe("settings cutover (spec §8.5)", () => {
+  it("keeps the running interval on its starting plan after settings change", async () => {
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    db.timerSettings.set("user-1", {
+      focusDurationSeconds: 60,
+      shortBreakSeconds: 300,
+      longBreakSeconds: 900,
+      intervalsBeforeLongBreak: 4,
+      autoStartBreaks: false,
+      autoStartFocus: false,
+    });
+    // The running interval still ends 1500s after its start.
+    const current = await service.current("user-1");
+    expect(current.session?.plannedDurationSeconds).toBe(1500);
+    expect(current.session?.expectedEndAt).toBe(at(1500).toISOString());
+    // …while the next interval picks up the new plan.
+    clock.now = at(600);
+    await service.complete("user-1", {});
+    const fresh = await service.start("user-1", { intervalType: "focus" });
+    expect(fresh.plannedDurationSeconds).toBe(60);
+  });
+});
+
+describe("lazy expiry reconcile (spec §8.4)", () => {
+  it("holds the 60-minute grace window constant", () => {
+    expect(RECONCILE_GRACE_SECONDS).toBe(3600);
+  });
+
+  it("auto-completes on current when back within the 60-minute grace window", async () => {
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 1800); // 30 min past the expected end
+    const result = await service.current("user-1");
+    expect(result.session).toBeNull();
+    expect(result.reconciled).toMatchObject({
+      status: "completed",
+      actualDurationSeconds: 1500,
+    });
+    expect(result.pendingConfirmation).toBeNull();
+    expect(result.autoStarted).toBeNull();
+    expect(result.cycle.completedFocusCount).toBe(1);
+    expect(result.next).toEqual({ intervalType: "short_break" });
+    expect(db.cycleCounts.get("user-1")).toBe(1);
+    // A second read reports the plain post-state — exactly one history row.
+    const again = await service.current("user-1");
+    expect(again.session).toBeNull();
+    expect(again.reconciled).toBeNull();
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it("auto-completes exactly at the grace boundary, asks beyond it", async () => {
+    const { clock, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 3600);
+    const atBoundary = await service.current("user-1");
+    expect(atBoundary.reconciled?.status).toBe("completed");
+
+    const second = setup();
+    await second.service.start("user-1", { intervalType: "focus" });
+    second.clock.now = at(1500 + 3601);
+    const past = await second.service.current("user-1");
+    expect(past.reconciled).toBeNull();
+    expect(past.session?.status).toBe("running");
+    expect(past.pendingConfirmation?.overdueSeconds).toBe(3601);
+    expect(past.pendingConfirmation?.session.id).toBe(past.session?.id);
+    expect(second.db.cycleCounts.get("user-1") ?? 0).toBe(0);
+  });
+
+  it("judges the grace window to the millisecond, not the floored second", async () => {
+    const { clock, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    // Half a second past the window is past it — no auto-complete.
+    clock.now = new Date(at(1500 + 3600).getTime() + 500);
+    const past = await service.current("user-1");
+    expect(past.reconciled).toBeNull();
+    expect(past.pendingConfirmation?.overdueSeconds).toBe(3600);
+  });
+
+  it("leaves a long-expired interval active until explicit Complete/Discard", async () => {
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 7200); // 2 h past the expected end
+    const pending = await service.current("user-1");
+    expect(pending.pendingConfirmation).not.toBeNull();
+    // Nothing finalized: still one active row, no cycle movement.
+    expect(
+      db.sessions.filter((s) => s.status === "running" || s.status === "paused"),
+    ).toHaveLength(1);
+    expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
+
+    // Complete (the dialog's Complete choice): bounded minutes + one bump.
+    const completed = await service.complete("user-1", {});
+    expect(completed.session).toMatchObject({
+      status: "completed",
+      actualDurationSeconds: 1500,
+    });
+    expect(db.cycleCounts.get("user-1")).toBe(1);
+  });
+
+  it("discards a long-expired interval as cancelled with no minutes and no cycle step", async () => {
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 7200);
+    await service.current("user-1"); // surfaces pendingConfirmation, finalizes nothing
+    const discarded = await service.cancel("user-1", {});
+    expect(discarded.session.status).toBe("cancelled");
+    expect(discarded.autoStarted).toBeNull();
+    expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
+  });
+
+  it("never expires a paused interval, however long it sits", async () => {
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(100);
+    await service.pause("user-1");
+    clock.now = at(100 + 7200); // 2 h frozen
+    const result = await service.current("user-1");
+    expect(result.session?.status).toBe("paused");
+    expect(result.reconciled).toBeNull();
+    expect(result.pendingConfirmation).toBeNull();
+    expect(db.cycleCounts.get("user-1") ?? 0).toBe(0);
+    // Resume still shifts the end forward by the gap; the interval lives on.
+    const resumed = await service.resume("user-1");
+    expect(resumed.expectedEndAt).toBe(at(1500 + 7200).toISOString());
+  });
+
+  it("keeps the break proposal on current after an idle completion", async () => {
+    const { clock, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500);
+    await service.complete("user-1", {});
+    const idle = await service.current("user-1");
+    expect(idle.session).toBeNull();
+    expect(idle.next).toEqual({ intervalType: "short_break" });
+  });
+
+  it("replays the same winner when concurrent currents overlap in the write", async () => {
+    // Deterministic overlap at the service seam: both reads see the
+    // expired row (microtask interleaving), the winner's key insert makes
+    // the loser take KEY_CONFLICT → replay. Live-DB timing can't promise
+    // this overlap, so the integration suite only pins the invariants.
+    const { clock, db, service } = setup();
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 1800);
+    const [first, second] = await Promise.all([
+      service.current("user-1"),
+      service.current("user-1"),
+    ]);
+    expect(first.reconciled?.id).toBeDefined();
+    expect(second.reconciled?.id).toBe(first.reconciled?.id);
+    expect(db.sessions).toHaveLength(1);
+    expect(db.cycleCounts.get("user-1")).toBe(1);
+  });
+
+  it("announces an auto-start exactly once when concurrent currents overlap", async () => {
+    const { clock, db, service } = setup({ autoStartBreaks: true });
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 1800);
+    const [first, second] = await Promise.all([
+      service.current("user-1"),
+      service.current("user-1"),
+    ]);
+    expect(first.reconciled?.id).toBeDefined();
+    expect(second.reconciled?.id).toBe(first.reconciled?.id);
+    // One winner claims the creation; the replaying loser reports null.
+    const starters = [first.autoStarted, second.autoStarted].filter(
+      (s) => s !== null,
+    );
+    expect(starters).toHaveLength(1);
+    expect(starters[0]).toMatchObject({
+      intervalType: "short_break",
+      status: "running",
+    });
+    expect(db.sessions).toHaveLength(2);
+  });
+
+  it("auto-starts the next interval during grace-window reconcile when enabled", async () => {
+    const { clock, db, service } = setup({ autoStartBreaks: true });
+    await service.start("user-1", { intervalType: "focus" });
+    clock.now = at(1500 + 600);
+    const result = await service.current("user-1");
+    expect(result.reconciled?.status).toBe("completed");
+    expect(result.autoStarted).toMatchObject({
+      intervalType: "short_break",
+      status: "running",
+    });
+    expect(result.session?.id).toBe(result.autoStarted?.id);
+    expect(result.next).toBeNull();
+    expect(db.sessions).toHaveLength(2);
   });
 });
 
