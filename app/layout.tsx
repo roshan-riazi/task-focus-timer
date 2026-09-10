@@ -41,7 +41,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <header className="border-b">
-          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+          <div className="mx-auto flex min-h-14 w-full max-w-5xl flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 py-2">
             <Link
               href="/"
               className="text-sm font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -53,12 +53,32 @@ export default async function RootLayout({
               className="flex items-center gap-1 text-sm"
             >
               {session && (
-                <Link
-                  href="/app"
-                  className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  Focus
-                </Link>
+                <>
+                  <Link
+                    href="/app"
+                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    Focus
+                  </Link>
+                  <Link
+                    href="/app/history"
+                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    History
+                  </Link>
+                  <Link
+                    href="/app/analytics"
+                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    Analytics
+                  </Link>
+                  <Link
+                    href="/app/settings"
+                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    Settings
+                  </Link>
+                </>
               )}
             </nav>
             <nav

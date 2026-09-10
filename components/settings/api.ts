@@ -1,4 +1,5 @@
 import type { PublicSettings } from "@/lib/settings/service";
+import type { UpdateSettingsInput } from "@/lib/settings/validation";
 
 /**
  * Typed client for the Settings API (spec §11.4, issue 09 contract).
@@ -52,6 +53,43 @@ export async function getSettings(): Promise<PublicSettings> {
   let res: Response;
   try {
     res = await fetch("/api/settings", { method: "GET" });
+  } catch {
+    throw new SettingsApiError(
+      "NETWORK_ERROR",
+      "Something went wrong. Check your connection and retry.",
+      0,
+    );
+  }
+  if (res.ok) {
+    const { settings } = (await res.json()) as { settings: PublicSettings };
+    return settings;
+  }
+  const body = await readEnvelope(res);
+  throw new SettingsApiError(
+    body.error?.code ?? "REQUEST_FAILED",
+    body.error?.message ?? "Something went wrong.",
+    res.status,
+    body.error?.fields,
+  );
+}
+
+/**
+ * Partial settings update (spec §11.4 `PATCH /api/settings`, issue 16
+ * settings form). Values use storage units (seconds, 0–100 volume) — the
+ * form converts its minute inputs once at the boundary. Returns the saved
+ * public settings; the saved row applies to newly created intervals only
+ * (spec §8.7 — the timer snapshots durations at start).
+ */
+export async function updateSettings(
+  values: UpdateSettingsInput,
+): Promise<PublicSettings> {
+  let res: Response;
+  try {
+    res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(values),
+    });
   } catch {
     throw new SettingsApiError(
       "NETWORK_ERROR",
