@@ -1,4 +1,4 @@
-Status: open
+Status: done
 Milestone: 3
 Depends on: 08, 10, 11
 
@@ -50,5 +50,8 @@ timer-state announcements (not per-tick). No audio (see 13).
   trap or Escape on the inline confirm (dismissal without a choice is
   invalid — the dialog persists until Complete/Discard). Flake notes: one
   pre-existing bcrypt timeout in `lib/auth/service.test.ts` under full-suite
-  load (16/16 isolated, untouched by this diff, same as issue 08). Awaiting
-  CI incl. webkit (chromium+firefox green locally); merge only when green.
+ load (16/16 isolated, untouched by this diff, same as issue 08). Awaiting
+ CI incl. webkit (chromium+firefox green locally); merge only when green.
+- 2026-09-10: done — merged via PR #24 (merge commit `9dfc1db`; all 8 CI
+  gates green: typecheck, lint, audit, migrate, vitest, playwright,
+  gitleaks, ci-required, incl. webkit).
