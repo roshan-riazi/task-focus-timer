@@ -45,14 +45,15 @@ main a {
   text-underline-offset: 2px;
 }
 
-/* WCAG 2.3.3: honor reduced-motion globally — animations and transitions
- * collapse to (near-)instant while layout stays intact. */
+/* WCAG 2.3.3: honor reduced-motion globally — transitions collapse to
+ * zero (the analytics chart e2e pins computed `0s`) while animations stay
+ * near-instant rather than zero so `animationend` handlers still fire. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     scroll-behavior: auto !important;
   }
 }
