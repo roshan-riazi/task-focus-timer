@@ -35,11 +35,22 @@ function journeyEmail(tag: string): string {
 
 const JOURNEY_PASSWORD = "s3cure-password";
 
-/** Tab from the current focus until the target control is focused. */
+/**
+ * Tab from the current focus until the target control is focused.
+ * Forward first, then backward: Firefox/WebKit resume sequential navigation
+ * after the blur point instead of restarting at the top, and don't wrap
+ * past the last stop — a keyboard-only user continues with Shift+Tab, so
+ * the helper does the same. Both directions together cover the whole
+ * document from any starting focus.
+ */
 async function tabTo(page: Page, target: Locator, what: string): Promise<void> {
   for (let i = 0; i < 60; i += 1) {
     if (await target.evaluate((el) => el === document.activeElement)) return;
     await page.keyboard.press("Tab");
+  }
+  for (let i = 0; i < 60; i += 1) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Shift+Tab");
   }
   throw new Error(`keyboard focus never reached ${what}`);
 }
