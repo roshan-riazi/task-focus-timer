@@ -1,4 +1,4 @@
-Status: in progress
+Status: done
 Milestone: 3
 Depends on: 03, 04, 05, 09
 
@@ -53,3 +53,10 @@ transitions, `409` codes (`ACTIVE_TIMER_EXISTS`, `NO_ACTIVE_TIMER`,
   issue 11's reconcile work). Reconcile (60-min auto/confirm), break
   proposal, and auto-start stay in issue 11 — no scope taken. Awaiting
   CI (merge only when green).
+- 2026-09-10: done — merged via PR #20 (merge commit `29370c5`; all 8 CI
+  gates green: typecheck, lint, audit, migrate, vitest, playwright,
+  gitleaks, ci-required). Carry-over for issue 11: lazy expiry
+  reconcile (auto <60 min, Complete/Discard confirm beyond), break
+  proposal + auto-start creation, and finalize-path hardening (recompute
+  `actual` inside the finalize transaction — currently pre-tx snapshot,
+  ms-skew bounded by the plan cap).
