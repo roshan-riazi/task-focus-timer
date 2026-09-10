@@ -21,13 +21,18 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@auth/core": "0.41.3",
+    "@auth/prisma-adapter": "^2.11.3",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@radix-ui/react-slot": "^1.2.3",
+    "@sentry/nextjs": "^10.74.0",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "next": "^16.0.0",
+    "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
     "react": "^19.0.0",
@@ -36,11 +41,13 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
@@ -54,7 +61,7 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only.",
+  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only. Scoped ignores live in pnpm-workspace.yaml (auditConfig is workspace-file-only; package.json entries are inert).",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",
