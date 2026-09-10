@@ -63,4 +63,22 @@ describe("prisma migration SQL", () => {
     const sql = migrationSql();
     expect(sql).toMatch(/TIMESTAMPTZ/i);
   });
+
+  it("creates Auth.js adapter tables for DB sessions (issue 04)", () => {
+    const sql = migrationSql();
+    for (const table of [
+      '"accounts"',
+      '"auth_sessions"',
+      '"auth_verification_tokens"',
+      '"email_verification_tokens"',
+      '"password_reset_tokens"',
+    ]) {
+      expect(sql).toContain(table);
+    }
+  });
+
+  it("enforces normalized emails at the DB level (issue 04, spec §8.1)", () => {
+    const sql = migrationSql();
+    expect(sql).toMatch(/CHECK[\s\S]*?"email"[\s\S]*?LOWER\("email"\)/i);
+  });
 });

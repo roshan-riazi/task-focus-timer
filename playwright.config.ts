@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // E2E backbone for issue 02 (CI gates). The smoke spec exercises only the
@@ -25,5 +27,18 @@ export default defineConfig({
     url: "http://127.0.0.1:3000/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
+    // E2E mail capture (issue 04): the file-outbox provider lets the
+    // keyboard-only auth journey follow emailed verify/reset links with no
+    // extra infrastructure and no CI-secret wiring. `env` extends
+    // process.env, so DATABASE_URL/AUTH_SECRET still come from the
+    // environment; the spec resolves the same default outbox dir.
+    env: {
+      EMAIL_PROVIDER: "outbox",
+      EMAIL_OUTBOX_DIR: join(tmpdir(), "focusflow-mail-outbox"),
+      // The CSRF origin gate (issue 05) expects browser Origins to match
+      // APP_URL; E2E serves 127.0.0.1, so pin it explicitly (localhost
+      // would mismatch and every mutation would 403).
+      APP_URL: "http://127.0.0.1:3000",
+    },
   },
 });
