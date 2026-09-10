@@ -314,8 +314,12 @@ describe("<TimerPanel /> (issue 12)", () => {
       await screen.findByText(/counted once in history/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/reconciled/i);
+    // The idle picker adopts the server `next` proposal in a post-render
+    // effect — wait for it rather than asserting synchronously. Issue 13's
+    // reconcile feedback (lazy settings read + alarm attempt) adds async
+    // work to this path, widening the race the sync query always had.
     expect(
-      screen.getByRole("button", { name: /start short break/i }),
+      await screen.findByRole("button", { name: /start short break/i }),
     ).toBeInTheDocument();
   });
 
