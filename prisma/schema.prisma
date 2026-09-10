@@ -27,26 +27,27 @@ enum SessionStatus {
 }
 
 model User {
-  id         String           @id @default(uuid()) @db.Uuid
-  email      String           @unique @db.VarChar(255)
-  timezone   String           @default("UTC") @db.VarChar(64)
+  id                      String                   @id @default(uuid()) @db.Uuid
+  email                   String                   @unique @db.VarChar(255)
+  timezone                String                   @default("UTC") @db.VarChar(64)
   // Issue 04 (credentials): scrypt/bcrypt hash, null for future
   // passwordless-only accounts. The service layer requires it non-null
   // for credentials users; emailVerified drives the verification nag.
-  name          String?    @db.VarChar(255)
-  image         String?
-  passwordHash  String?    @map("password_hash") @db.Text
-  emailVerified DateTime?  @map("email_verified") @db.Timestamptz(6)
-  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-  settings   UserSettings?
-  tasks      Task[]
-  timerSessions TimerSession[]
-  cycleState FocusCycleState?
+  name                    String?                  @db.VarChar(255)
+  image                   String?
+  passwordHash            String?                  @map("password_hash") @db.Text
+  emailVerified           DateTime?                @map("email_verified") @db.Timestamptz(6)
+  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  settings                UserSettings?
+  tasks                   Task[]
+  timerSessions           TimerSession[]
+  idempotencyKeys         TimerIdempotencyKey[]
+  cycleState              FocusCycleState?
   // Auth.js v5 adapter relations (DB sessions, ADR-0002). `sessions` here
   // is the adapter Session model; timer rows live under `timerSessions`.
-  accounts               Account[]
-  sessions               Session[]
+  accounts                Account[]
+  sessions                Session[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
 
@@ -72,18 +73,18 @@ model UserSettings {
 }
 
 model Task {
-  id          String         @id @default(uuid()) @db.Uuid
-  userId      String         @map("user_id") @db.Uuid
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String         @db.VarChar(200)
-  notes       String?        @db.VarChar(2000)
-  category    String?        @db.VarChar(50)
-  status      TaskStatus     @default(active)
-  position    Float
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  completedAt DateTime?      @map("completed_at") @db.Timestamptz(6)
-  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        String         @map("user_id") @db.Uuid
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String         @db.VarChar(200)
+  notes         String?        @db.VarChar(2000)
+  category      String?        @db.VarChar(50)
+  status        TaskStatus     @default(active)
+  position      Float
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt   DateTime?      @map("completed_at") @db.Timestamptz(6)
+  deletedAt     DateTime?      @map("deleted_at") @db.Timestamptz(6)
   timerSessions TimerSession[]
 
   @@index([userId, status, position], map: "tasks_user_status_position_idx")
@@ -91,25 +92,26 @@ model Task {
 }
 
 model TimerSession {
-  id                      String        @id @default(uuid()) @db.Uuid
-  userId                  String        @map("user_id") @db.Uuid
-  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId                  String?       @map("task_id") @db.Uuid
-  task                    Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  taskTitleSnapshot       String?       @map("task_title_snapshot") @db.VarChar(200)
-  categorySnapshot        String?       @map("category_snapshot") @db.VarChar(50)
-  intervalType            IntervalType  @map("interval_type")
-  status                  SessionStatus @default(running)
-  plannedDurationSeconds  Int           @map("planned_duration_seconds")
-  actualDurationSeconds   Int?          @map("actual_duration_seconds")
-  startedAt               DateTime      @map("started_at") @db.Timestamptz(6)
-  expectedEndAt           DateTime      @map("expected_end_at") @db.Timestamptz(6)
-  pausedAt                DateTime?     @map("paused_at") @db.Timestamptz(6)
-  accumulatedPauseSeconds Int           @default(0) @map("accumulated_pause_seconds")
-  completedAt             DateTime?     @map("completed_at") @db.Timestamptz(6)
-  cancelledAt             DateTime?     @map("cancelled_at") @db.Timestamptz(6)
-  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                      String                @id @default(uuid()) @db.Uuid
+  userId                  String                @map("user_id") @db.Uuid
+  user                    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId                  String?               @map("task_id") @db.Uuid
+  task                    Task?                 @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskTitleSnapshot       String?               @map("task_title_snapshot") @db.VarChar(200)
+  categorySnapshot        String?               @map("category_snapshot") @db.VarChar(50)
+  intervalType            IntervalType          @map("interval_type")
+  status                  SessionStatus         @default(running)
+  plannedDurationSeconds  Int                   @map("planned_duration_seconds")
+  actualDurationSeconds   Int?                  @map("actual_duration_seconds")
+  startedAt               DateTime              @map("started_at") @db.Timestamptz(6)
+  expectedEndAt           DateTime              @map("expected_end_at") @db.Timestamptz(6)
+  pausedAt                DateTime?             @map("paused_at") @db.Timestamptz(6)
+  accumulatedPauseSeconds Int                   @default(0) @map("accumulated_pause_seconds")
+  completedAt             DateTime?             @map("completed_at") @db.Timestamptz(6)
+  cancelledAt             DateTime?             @map("cancelled_at") @db.Timestamptz(6)
+  createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  idempotencyKeys         TimerIdempotencyKey[]
 
   @@unique([userId], map: "timer_sessions_one_active_per_user", where: raw("\"status\" IN ('running', 'paused')"))
   @@index([userId, startedAt], map: "timer_sessions_user_started_idx")
@@ -123,6 +125,27 @@ model FocusCycleState {
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("focus_cycle_state")
+}
+
+// Finalize idempotency keys (issue 10, SYSTEM_DESIGN §6): one row per
+// (`userId`, client-sent `Idempotency-Key`) on complete/cancel/skip-break.
+// Retries with the same key replay the stored session without touching the
+// focus-cycle count; a different key after finalize conflicts as
+// ALREADY_FINALIZED. Scoped by user (keys never replay across users) and
+// pruned lazily past IDEMPOTENCY_TTL_MS. Cascades with the user and the
+// session so account deletion purges keys with everything else (spec §8.1).
+model TimerIdempotencyKey {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String       @db.VarChar(128)
+  sessionId String       @map("session_id") @db.Uuid
+  session   TimerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, key], map: "timer_idempotency_keys_user_key_unique")
+  @@index([userId, createdAt], map: "timer_idempotency_keys_user_created_idx")
+  @@map("timer_idempotency_keys")
 }
 
 // Auth.js v5 adapter tables (issue 04, ADR-0002: database sessions keep the
