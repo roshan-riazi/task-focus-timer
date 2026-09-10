@@ -135,11 +135,32 @@ describe("<TaskPanel /> list + quick-add (slice 2)", () => {
       ),
     );
     render(<TaskPanel />);
-    expect(await screen.findByText(/no active tasks yet/i)).toBeInTheDocument();
+    // Filter changes land silently otherwise — the empty copy lives inside
+    // a status region so the change announces.
+    const empty = await screen.findByText(/no active tasks yet/i);
+    expect(screen.getAllByRole("status")).toContain(empty);
     // The quick-add control stays available in the empty state.
     expect(
       screen.getByRole("textbox", { name: /new task title/i }),
     ).toBeInTheDocument();
+  });
+
+  it("names the quick-add field with its visible label (WCAG 2.5.3)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ tasks: [], nextCursor: null }, 200),
+      ),
+    );
+    render(<TaskPanel />);
+    await screen.findByText(/no active tasks yet/i);
+    // The accessible name must contain the visible label text — no
+    // aria-label override that speaks a different name than sighted users
+    // see.
+    expect(screen.getByLabelText("New task title")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /new task title/i }),
+    ).not.toHaveAttribute("aria-label");
   });
 
   it("shows a retryable error when loading fails", async () => {

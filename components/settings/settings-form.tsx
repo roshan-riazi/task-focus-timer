@@ -258,7 +258,7 @@ export function SettingsForm() {
   if (settled.error) {
     return (
       <div className="grid gap-2">
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {settled.error}
         </p>
         <div>
@@ -276,6 +276,22 @@ export function SettingsForm() {
 
   const inputClass =
     "h-10 rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+  const checkboxClass =
+    "h-4 w-4 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+  const rangeClass =
+    "w-full accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+  // Checkbox-backed server fields share one error region below the group
+  // (3.3.1): each box points at it when its own field fails.
+  const TOGGLES_ERROR_ID = "settings-toggles-error";
+  const TOGGLE_FIELDS = [
+    "autoStartBreaks",
+    "autoStartFocus",
+    "soundEnabled",
+    "notificationsEnabled",
+  ] as const;
+  const toggleMessages = TOGGLE_FIELDS.flatMap(
+    (field) => fieldErrors[field] ?? [],
+  );
 
   return (
     <form
@@ -285,7 +301,7 @@ export function SettingsForm() {
     >
       {notice && <p role="status">{notice}</p>}
       {formErrors.length > 0 && (
-        <p id={FORM_ERROR_ID} role="alert" className="text-sm text-red-500">
+        <p id={FORM_ERROR_ID} role="alert" className="text-sm text-red-700 dark:text-red-400">
           {formErrors.join(" ")}
         </p>
       )}
@@ -310,7 +326,7 @@ export function SettingsForm() {
             <p
               id={`${FOCUS_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(FOCUS_ID).join(" ")}
             </p>
@@ -336,7 +352,7 @@ export function SettingsForm() {
             <p
               id={`${SHORT_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(SHORT_ID).join(" ")}
             </p>
@@ -362,7 +378,7 @@ export function SettingsForm() {
             <p
               id={`${LONG_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(LONG_ID).join(" ")}
             </p>
@@ -388,7 +404,7 @@ export function SettingsForm() {
             <p
               id={`${CYCLE_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(CYCLE_ID).join(" ")}
             </p>
@@ -403,7 +419,15 @@ export function SettingsForm() {
             type="checkbox"
             checked={autoBreaks}
             onChange={(e) => setAutoBreaks(e.target.checked)}
-            className="h-4 w-4 accent-primary"
+            aria-invalid={
+              (fieldErrors.autoStartBreaks ?? []).length > 0 || undefined
+            }
+            aria-describedby={
+              (fieldErrors.autoStartBreaks ?? []).length > 0
+                ? TOGGLES_ERROR_ID
+                : undefined
+            }
+            className={checkboxClass}
           />
           Start breaks automatically
         </label>
@@ -413,7 +437,15 @@ export function SettingsForm() {
             type="checkbox"
             checked={autoFocus}
             onChange={(e) => setAutoFocus(e.target.checked)}
-            className="h-4 w-4 accent-primary"
+            aria-invalid={
+              (fieldErrors.autoStartFocus ?? []).length > 0 || undefined
+            }
+            aria-describedby={
+              (fieldErrors.autoStartFocus ?? []).length > 0
+                ? TOGGLES_ERROR_ID
+                : undefined
+            }
+            className={checkboxClass}
           />
           Start focus intervals automatically
         </label>
@@ -423,7 +455,15 @@ export function SettingsForm() {
             type="checkbox"
             checked={sound}
             onChange={(e) => setSound(e.target.checked)}
-            className="h-4 w-4 accent-primary"
+            aria-invalid={
+              (fieldErrors.soundEnabled ?? []).length > 0 || undefined
+            }
+            aria-describedby={
+              (fieldErrors.soundEnabled ?? []).length > 0
+                ? TOGGLES_ERROR_ID
+                : undefined
+            }
+            className={checkboxClass}
           />
           Sound
         </label>
@@ -433,10 +473,27 @@ export function SettingsForm() {
             type="checkbox"
             checked={notifications}
             onChange={(e) => setNotifications(e.target.checked)}
-            className="h-4 w-4 accent-primary"
+            aria-invalid={
+              (fieldErrors.notificationsEnabled ?? []).length > 0 || undefined
+            }
+            aria-describedby={
+              (fieldErrors.notificationsEnabled ?? []).length > 0
+                ? TOGGLES_ERROR_ID
+                : undefined
+            }
+            className={checkboxClass}
           />
           Browser notifications
         </label>
+        {toggleMessages.length > 0 && (
+          <p
+            id={TOGGLES_ERROR_ID}
+            role="alert"
+            className="text-sm text-red-700 dark:text-red-400"
+          >
+            {toggleMessages.join(" ")}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-3">
@@ -466,7 +523,7 @@ export function SettingsForm() {
             <p
               id={`${PRESET_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(PRESET_ID).join(" ")}
             </p>
@@ -486,17 +543,22 @@ export function SettingsForm() {
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
               aria-describedby={errorIdFor(VOLUME_ID)}
-              className="w-full accent-primary"
+              aria-valuetext={`${volume} percent`}
+              className={rangeClass}
             />
-            <output htmlFor={VOLUME_ID} className="text-sm tabular-nums">
-              {volume}
+            <output
+              htmlFor={VOLUME_ID}
+              aria-label={`${volume} percent`}
+              className="text-sm tabular-nums"
+            >
+              {volume}%
             </output>
           </div>
           {messagesFor(VOLUME_ID).length > 0 && (
             <p
               id={`${VOLUME_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(VOLUME_ID).join(" ")}
             </p>
@@ -524,7 +586,7 @@ export function SettingsForm() {
             <p
               id={`${TIMEZONE_ID}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {messagesFor(TIMEZONE_ID).join(" ")}
             </p>

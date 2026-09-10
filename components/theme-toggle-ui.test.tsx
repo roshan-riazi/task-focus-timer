@@ -9,10 +9,11 @@ beforeEach(() => {
 });
 
 describe("<ThemeToggle />", () => {
-  it("renders a theme toggle button", () => {
+  it("renders a theme toggle button announcing its target state", () => {
     render(<ThemeToggle />);
+    // Starts dark (see below), so the action switches to light.
     expect(
-      screen.getByRole("button", { name: /toggle theme/i }),
+      screen.getByRole("button", { name: /switch to light theme/i }),
     ).toBeInTheDocument();
   });
 
@@ -22,9 +23,15 @@ describe("<ThemeToggle />", () => {
 
     expect(document.documentElement.classList.contains("dark")).toBe(true);
 
-    await user.click(screen.getByRole("button", { name: /toggle theme/i }));
+    await user.click(
+      screen.getByRole("button", { name: /switch to light theme/i }),
+    );
 
     expect(document.documentElement.classList.contains("light")).toBe(true);
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    // The label now offers the way back (WCAG 4.1.2: the name conveys state).
+    expect(
+      screen.getByRole("button", { name: /switch to dark theme/i }),
+    ).toBeInTheDocument();
   });
 });

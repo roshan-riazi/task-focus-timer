@@ -20,11 +20,13 @@ export function ResetPasswordForm() {
   if (!token) {
     return (
       <div className="grid max-w-sm gap-4">
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           This reset link is missing its token. Request a fresh one.
         </p>
         <p className="text-sm opacity-80">
-          <Link href="/forgot-password">Send a new reset link</Link>
+          <Link href="/forgot-password" className="underline underline-offset-2">
+            Send a new reset link
+          </Link>
         </p>
       </div>
     );
@@ -40,7 +42,7 @@ export function ResetPasswordForm() {
       }}
     >
       {formError && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {formError}
         </p>
       )}
@@ -54,9 +56,11 @@ export function ResetPasswordForm() {
         errors={fieldErrors.password}
       />
       {fieldErrors.token && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           This link is invalid or has expired.{" "}
-          <Link href="/forgot-password">Send a new reset link</Link>
+          <Link href="/forgot-password" className="underline underline-offset-2">
+            Send a new reset link
+          </Link>
         </p>
       )}
       <Button type="submit" disabled={pending}>

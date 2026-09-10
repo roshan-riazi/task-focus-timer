@@ -15,11 +15,14 @@ export function Workspace() {
   const [selected, setSelected] = useState<PublicTask | null>(null);
 
   return (
+    // DOM order matches visual order (WCAG 1.3.2/2.4.3): the timer section
+    // comes first so keyboard Tab meets the visible timer before the task
+    // list on narrow screens; on desktop the sidebar takes the first column
+    // via md:order while the timer keeps the main column.
     <div className="grid items-start gap-4 md:grid-cols-[18rem_1fr]">
-      <TaskPanel onSelectionChange={setSelected} />
       <section
         aria-labelledby="focus-heading"
-        className="order-first min-w-0 rounded-md border p-4 md:order-none"
+        className="min-w-0 rounded-md border p-4 md:order-2"
       >
         <h1 id="focus-heading" className="text-base font-semibold">
           {selected ? `Focus · ${selected.title}` : "Focus"}
@@ -38,6 +41,9 @@ export function Workspace() {
           <TimerPanel selectedTask={selected} />
         </div>
       </section>
+      <div className="min-w-0 md:order-1">
+        <TaskPanel onSelectionChange={setSelected} />
+      </div>
     </div>
   );
 }

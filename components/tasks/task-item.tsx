@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PublicTask } from "@/lib/tasks/service";
 import { TaskApiError, toTaskApiError, type UpdateTaskValues } from "./api";
 import { AuthField } from "../auth/auth-field";
@@ -80,6 +80,52 @@ export function TaskItem({
   const [draftNotes, setDraftNotes] = useState(task.notes ?? "");
   const [draftCategory, setDraftCategory] = useState(task.category ?? "");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  // Focus return for the inline edit / delete-confirm states (WCAG 2.4.3):
+  // the autofocused control unmounts on cancel, so the re-mounted opener
+  // takes focus back. Refs (not stored elements) — the opener unmounts
+  // while its panel is open, so a stored node would be detached.
+  const editButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreEditFocus = useRef(false);
+  const restoreDeleteFocus = useRef(false);
+
+  useEffect(() => {
+    if (!editing && restoreEditFocus.current) {
+      restoreEditFocus.current = false;
+      editButtonRef.current?.focus();
+    }
+  }, [editing]);
+
+  useEffect(() => {
+    if (!confirmingDelete && restoreDeleteFocus.current) {
+      restoreDeleteFocus.current = false;
+      deleteButtonRef.current?.focus();
+    }
+  }, [confirmingDelete]);
+
+  function openEditing() {
+    setError(null);
+    setEditing(true);
+  }
+
+  function closeEditing() {
+    setEditing(false);
+    setDraftTitle(task.title);
+    setDraftNotes(task.notes ?? "");
+    setDraftCategory(task.category ?? "");
+    setFieldErrors({});
+    setError(null);
+    restoreEditFocus.current = true;
+  }
+
+  function openConfirmingDelete() {
+    setConfirmingDelete(true);
+  }
+
+  function closeConfirmingDelete() {
+    setConfirmingDelete(false);
+    restoreDeleteFocus.current = true;
+  }
 
   /**
    * Runs a mutation; resolves with the failure (or null) so callers needing
@@ -167,7 +213,7 @@ export function TaskItem({
             <p
               id={`${notesId}-error`}
               role="alert"
-              className="text-sm text-red-500"
+              className="text-sm text-red-700 dark:text-red-400"
             >
               {fieldErrors.notes.join(" ")}
             </p>
@@ -183,7 +229,7 @@ export function TaskItem({
           errors={fieldErrors.category}
         />
         {error && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             {error.message}
           </p>
         )}
@@ -195,14 +241,7 @@ export function TaskItem({
             type="button"
             variant="ghost"
             disabled={busy}
-            onClick={() => {
-              setEditing(false);
-              setDraftTitle(task.title);
-              setDraftNotes(task.notes ?? "");
-              setDraftCategory(task.category ?? "");
-              setFieldErrors({});
-              setError(null);
-            }}
+            onClick={closeEditing}
           >
             Cancel
           </Button>
@@ -236,13 +275,13 @@ export function TaskItem({
             type="button"
             variant="ghost"
             disabled={busy}
-            onClick={() => setConfirmingDelete(false)}
+            onClick={closeConfirmingDelete}
           >
             Keep
           </Button>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             {error.message}
           </p>
         )}
@@ -302,13 +341,11 @@ export function TaskItem({
         )}
         {actions && canAct && (
           <Button
+            ref={editButtonRef}
             type="button"
             variant="ghost"
             disabled={busy}
-            onClick={() => {
-              setError(null);
-              setEditing(true);
-            }}
+            onClick={openEditing}
             aria-label={`Edit ${task.title}`}
           >
             Edit
@@ -338,10 +375,11 @@ export function TaskItem({
         )}
         {actions && (
           <Button
+            ref={deleteButtonRef}
             type="button"
             variant="ghost"
             disabled={busy}
-            onClick={() => setConfirmingDelete(true)}
+            onClick={openConfirmingDelete}
             aria-label={`Delete ${task.title}`}
           >
             Delete
@@ -371,7 +409,7 @@ export function TaskItem({
         )}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-sm text-red-500">
+        <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
           {error.message}
         </p>
       )}

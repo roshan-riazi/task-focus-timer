@@ -35,6 +35,32 @@ describe("<VerificationNag /> (non-blocking reminder, spec §8.1)", () => {
     ).toBeInTheDocument();
   });
 
+  it("announces sending while the resend is in flight", async () => {
+    const user = userEvent.setup();
+    let resolveResend!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResend = resolve;
+          }),
+      ),
+    );
+    render(<VerificationNag />);
+    await user.click(screen.getByRole("button", { name: /resend email/i }));
+    // Screen-reader users hear progress: the banner is a live region, so
+    // the sending copy must be exposed — never an aria-hidden ellipsis.
+    const sending = await screen.findByText("Sending…");
+    expect(sending).toBeVisible();
+    expect(sending).not.toHaveAttribute("aria-hidden");
+    expect(sending.closest('[aria-hidden="true"]')).toBeNull();
+    resolveResend(new Response("{}", { status: 200 }));
+    expect(
+      await screen.findByRole("button", { name: /email sent/i }),
+    ).toBeDisabled();
+  });
+
   it("posts a resend and confirms without leaving the page", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));

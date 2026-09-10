@@ -235,7 +235,7 @@ export function HistoryPanel() {
         {!loading && notice && <p role="status">{notice}</p>}
         {loadError && (
           <div className="grid gap-2">
-            <p role="alert" className="text-sm text-red-500">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
               {loadError}
             </p>
             <div>
@@ -246,12 +246,12 @@ export function HistoryPanel() {
           </div>
         )}
         {!loading && !loadError && rows !== null && rows.length === 0 && (
-          <p>{emptyCopy(period, type)}</p>
+          <p role="status">{emptyCopy(period, type)}</p>
         )}
         {!loading && !loadError && rows !== null && rows.length > 0 && (
           <>
             <div
-              className="min-w-0 overflow-x-auto rounded-md border"
+              className="min-w-0 overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               tabIndex={0}
               role="region"
               aria-label="Recent intervals (scrollable table)"
@@ -319,7 +319,10 @@ export function HistoryPanel() {
             {nextCursor !== null && (
               <div className="grid gap-2">
                 {moreError && (
-                  <p role="alert" className="text-sm text-red-500">
+                  <p
+                    role="alert"
+                    className="text-sm text-red-700 dark:text-red-400"
+                  >
                     {moreError}
                   </p>
                 )}

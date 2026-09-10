@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { THEME_STORAGE_KEY } from "@/components/theme-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PrimaryNav } from "@/components/nav-links";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { VerificationNag } from "@/components/auth/verification-nag";
 import type { AppSession } from "@/lib/auth/session";
@@ -40,6 +41,12 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-dvh bg-background text-foreground antialiased">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:outline-none"
+        >
+          Skip to content
+        </a>
         <header className="border-b">
           <div className="mx-auto flex min-h-14 w-full max-w-5xl flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 py-2">
             <Link
@@ -48,49 +55,15 @@ export default async function RootLayout({
             >
               FocusFlow
             </Link>
-            <nav
-              aria-label="Primary"
-              className="flex items-center gap-1 text-sm"
-            >
-              {session && (
-                <>
-                  <Link
-                    href="/app"
-                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    Focus
-                  </Link>
-                  <Link
-                    href="/app/history"
-                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    History
-                  </Link>
-                  <Link
-                    href="/app/analytics"
-                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    Analytics
-                  </Link>
-                  <Link
-                    href="/app/settings"
-                    className="rounded-md px-3 py-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    Settings
-                  </Link>
-                </>
-              )}
-            </nav>
+            {session && <PrimaryNav />}
             <nav
               aria-label="Account"
               className="flex items-center gap-1 text-sm"
             >
               {session ? (
                 <>
-                  <span
-                    className="mr-2 hidden opacity-80 sm:inline"
-                    aria-label={`Signed in as ${session.user.email}`}
-                  >
+                  <span className="mr-2 hidden opacity-80 sm:inline">
+                    <span className="sr-only">Signed in as </span>
                     {session.user.email}
                   </span>
                   <LogoutButton />
@@ -115,7 +88,7 @@ export default async function RootLayout({
             </nav>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl px-4 py-8">
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl px-4 py-8">
           {session && !session.user.emailVerified && (
             <div className="mb-6">
               <VerificationNag />

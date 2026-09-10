@@ -28,6 +28,7 @@ export function VerificationNag() {
   return (
     <div
       role="status"
+      aria-label="Email verification reminder"
       className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
     >
       <p>
@@ -45,7 +46,7 @@ export function VerificationNag() {
         >
           {state === "sent" ? "Email sent" : "Resend email"}
         </Button>
-        {state === "sending" && <span aria-hidden>…</span>}
+        {state === "sending" && <span>Sending…</span>}
         {state === "sent" && <span>Check your inbox.</span>}
         {state === "failed" && (
           <span role="alert">Couldn&apos;t resend. Try again.</span>
