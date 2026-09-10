@@ -71,6 +71,15 @@ function createFakePorts(overrides: Partial<AuthPorts> = {}) {
           if (session.userId === userId) sessions.delete(token);
         }
       },
+      // Account purge (issue 18, spec §8.1): the fake mirrors the Prisma
+      // port's cascade — user, settings bootstrap, and sessions go together.
+      async deleteAccount(userId) {
+        users.delete(userId);
+        settingsRows.delete(userId);
+        for (const [token, session] of sessions) {
+          if (session.userId === userId) sessions.delete(token);
+        }
+      },
     },
     sessions: {
       async create(data) {
@@ -459,5 +468,51 @@ describe("forgotPassword / resetPassword (no enumeration, session revocation)", 
     });
     await service.forgotPassword({ email: "gina@example.com" });
     expect(notifyReset).toHaveBeenCalledOnce();
+  });
+});
+
+describe("deleteAccount (spec §8.1: explicit confirmation + live purge)", () => {
+  it("purges the user, settings bootstrap, and sessions on DELETE", async () => {
+    const fake = createFakePorts();
+    const service = createAuthService(fake.ports);
+    const { id } = await fake.ports.users.createWithDefaults({
+      email: "bye@example.com",
+      passwordHash: "hash",
+      timezone: "UTC",
+    });
+    await fake.ports.sessions.create({
+      sessionToken: "sess-bye",
+      userId: id,
+      expires: new Date("2026-10-08T12:00:00.000Z"),
+    });
+    const result = await service.deleteAccount(id, { confirmation: "DELETE" });
+    expect(result).toEqual({ deleted: true });
+    expect(fake.users.has(id)).toBe(false);
+    expect(fake.settingsRows.has(id)).toBe(false);
+    expect(fake.sessions.has("sess-bye")).toBe(false);
+  });
+
+  it("rejects a wrong confirmation with VALIDATION_ERROR and purges nothing", async () => {
+    const fake = createFakePorts();
+    const service = createAuthService(fake.ports);
+    const { id } = await fake.ports.users.createWithDefaults({
+      email: "stay@example.com",
+      passwordHash: "hash",
+      timezone: "UTC",
+    });
+    const error = await expectCode(
+      service.deleteAccount(id, { confirmation: "delete" }),
+      "VALIDATION_ERROR",
+    );
+    expect(error.fields?.confirmation?.length).toBeGreaterThan(0);
+    expect(fake.users.has(id)).toBe(true);
+  });
+
+  it("is idempotent: deleting an already-gone user still resolves deleted", async () => {
+    const fake = createFakePorts();
+    const service = createAuthService(fake.ports);
+    await expect(
+      service.deleteAccount("id-missing", { confirmation: "DELETE" }),
+    ).resolves.toEqual({ deleted: true });
   });
 });

@@ -22,7 +22,7 @@ Sources: `docs/product/PRODUCT_SPEC.md` (product authority), `docs/adr/`
 app/
   (public)/{login,register,forgot-password,reset-password}
   app/{page,tasks,history,analytics,settings}   # authenticated workspace
-  api/{tasks,timer,sessions,analytics,settings,health}/route.ts
+   api/{tasks,timer,sessions,analytics,settings,account,health}/route.ts
 lib/{db,auth,timer,analytics,rate-limit,log}.ts
 components/{tasks,timer,history,analytics,ui}/
 prisma/{schema.prisma,migrations}/

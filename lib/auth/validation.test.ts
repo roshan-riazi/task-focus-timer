@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deleteAccountSchema,
   forgotPasswordSchema,
   loginSchema,
   normalizeEmail,
@@ -140,5 +141,30 @@ describe("toValidationError (API envelope per SYSTEM_DESIGN §6)", () => {
     expect(err.body.error.fields?.password?.length).toBeGreaterThan(0);
     // Envelope carries no user content beyond the field messages.
     expect(JSON.stringify(err.body)).not.toContain("password123");
+  });
+});
+
+describe("deleteAccountSchema (spec §8.1: explicit confirmation)", () => {
+  it("accepts exactly the DELETE confirmation literal", () => {
+    expect(deleteAccountSchema.parse({ confirmation: "DELETE" })).toEqual({
+      confirmation: "DELETE",
+    });
+  });
+
+  it("rejects missing, mistyped, wrong-case, and padded confirmations", () => {
+    const bad: unknown[] = [
+      {},
+      null,
+      [],
+      "DELETE",
+      { confirmation: "" },
+      { confirmation: "delete" },
+      { confirmation: " DELETE" },
+      { confirmation: "DELETE " },
+      { confirmation: "YES" },
+    ];
+    for (const input of bad) {
+      expect(deleteAccountSchema.safeParse(input).success).toBe(false);
+    }
   });
 });

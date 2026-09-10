@@ -152,7 +152,7 @@ function withMutationGates(
   deps: HandlerDeps,
   inner: (request: Request, requestId: string) => Promise<Response>,
 ) {
-  return async function POST(request: Request): Promise<Response> {
+  return async function gatedMutation(request: Request): Promise<Response> {
     const requestId = requestIdOf(request);
     const rejected =
       originRejection(request, deps, requestId) ??
@@ -250,6 +250,24 @@ export function createResetPasswordHandler(deps: HandlerDeps) {
     await service.resetPassword(await readJson(request));
     // Reset revokes all sessions: drop the caller's cookie too.
     return jsonWithRequestId({}, 200, requestId, {
+      "Set-Cookie": serializeClearSessionCookie(),
+    });
+  });
+}
+
+export function createDeleteAccountHandler(deps: HandlerDeps) {
+  return withMutationGates(deps, async (request, requestId) => {
+    // Identity derives from the session, never from client input
+    // (spec §11.5): the body carries only the DELETE confirmation literal.
+    const auth = await requireUser(deps, requestId);
+    if (!auth.ok) return auth.response;
+    const service = await deps.getService();
+    const result = await service.deleteAccount(
+      auth.user.id,
+      await readJson(request),
+    );
+    // The purge revokes every session including the caller's: clear its cookie.
+    return jsonWithRequestId(result, 200, requestId, {
       "Set-Cookie": serializeClearSessionCookie(),
     });
   });

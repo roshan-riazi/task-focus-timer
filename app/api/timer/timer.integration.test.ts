@@ -806,6 +806,32 @@ describeIfDb(
       expect(await activeCount(b.id)).toBe(1);
     });
 
+    it("answers foreign task ids exactly like missing ones (no existence oracle)", async () => {
+      await ensureReady();
+      const owner = await makeUser("timer-task-owner");
+      const other = await makeUser("timer-task-other");
+      const owned = await db.task.create({
+        data: { userId: owner.id, title: "Private", position: 1 },
+      });
+      const depsOther = depsFor(other.id, other.email);
+      const foreign = await start(depsOther, {
+        intervalType: "focus",
+        taskId: owned.id,
+      });
+      expect(foreign.status).toBe(404);
+      const missing = await start(depsOther, {
+        intervalType: "focus",
+        taskId: crypto.randomUUID(),
+      });
+      expect(missing.status).toBe(404);
+      // Issue 18, spec §12.2: identical shapes, so the 404 reveals nothing
+      // about whether another user's task exists.
+      expect(foreign.data).toEqual(missing.data);
+      expect(foreign.data).toEqual({
+        error: { code: "NOT_FOUND", message: "Not found." },
+      });
+    });
+
     it("requires a session on every route", async () => {
       await ensureReady();
       const signedOut: TimerHandlerDeps = {

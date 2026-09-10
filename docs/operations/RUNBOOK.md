@@ -87,7 +87,8 @@ the evidence.
 ## 8. Auth abuse controls (issue 05)
 
 - Rate limits: per-IP fixed windows on register/login/verify/resend/
-  forgot/reset (see `AUTH_RATE_LIMITS` in `lib/rate-limit/limiter.ts`).
+  forgot/reset (see `AUTH_RATE_LIMITS` in `lib/rate-limit/limiter.ts`) plus
+  `account:delete` (5/hour) on the destructive account-purge endpoint.
   Budgets self-reset when the window passes; over-limit answers are 429 +
   `Retry-After`. A user seeing 429 on a shared network just waits out the
   window — no manual reset exists or is needed.

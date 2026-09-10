@@ -77,6 +77,28 @@ export function createPrismaPorts(
           db.session.deleteMany({ where: { userId } }),
         ]);
       },
+      deleteAccount: async (userId) => {
+        // Single-DB purge story (ADR-0002): one `user.delete` removes the
+        // user plus every user-linked row through `onDelete: Cascade`
+        // (settings, tasks, timer sessions + snapshots, cycle state,
+        // idempotency keys, adapter sessions/accounts, email tokens).
+        // `rate_limit_hits` needs no purge — keys embed only the endpoint
+        // bucket + caller IP, never user content. P2025 (already gone)
+        // resolves quietly so deletion stays idempotent.
+        try {
+          await db.user.delete({ where: { id: userId } });
+        } catch (cause) {
+          if (
+            typeof cause === "object" &&
+            cause !== null &&
+            "code" in cause &&
+            (cause as { code: unknown }).code === "P2025"
+          ) {
+            return;
+          }
+          throw cause;
+        }
+      },
     },
     sessions: {
       create: async ({ sessionToken, userId, expires }) => {

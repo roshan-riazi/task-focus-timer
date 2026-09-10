@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthService } from "./service";
 import type { AppSession } from "./session";
 import {
+  createDeleteAccountHandler,
   createForgotPasswordHandler,
   createLoginHandler,
   createLogoutHandler,
@@ -32,8 +33,8 @@ function stubService(): AuthService {
     verifyEmail: async () => ({ userId: "u1" }),
     forgotPassword: async () => undefined,
     resetPassword: async () => undefined,
-  } as AuthService;
-}
+    deleteAccount: async () => ({ deleted: true as const }),
+  } as AuthService;}
 
 const SIGNED_IN: AppSession = {
   user: {
@@ -61,6 +62,20 @@ function post(
   return handler(
     new Request("https://app.example/api/auth/x", {
       method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+function del(
+  handler: (request: Request) => Promise<Response>,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  return handler(
+    new Request("https://app.example/api/account", {
+      method: "DELETE",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
     }),
@@ -122,6 +137,15 @@ describe("auth mutation origin enforcement", () => {
         post(
           createResetPasswordHandler(deps()),
           { token: "t", password: "brand-new-pass-2" },
+          headers,
+        ),
+    },
+    {
+      name: "delete-account",
+      run: (headers) =>
+        del(
+          createDeleteAccountHandler(deps()),
+          { confirmation: "DELETE" },
           headers,
         ),
     },

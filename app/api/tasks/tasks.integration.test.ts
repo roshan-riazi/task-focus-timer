@@ -364,6 +364,17 @@ describeIfDb(
       expect((await post(createReopenTaskHandler(depsB), depsB, {}, id)).status).toBe(404);
       expect((await post(createDeleteTaskHandler(depsB), depsB, {}, id, "DELETE")).status).toBe(404);
 
+      // Leak-shape identity (issue 18, spec §12.2): a foreign id answers
+      // byte-identically to a genuinely missing id — no existence oracle.
+      const foreignBody = await (await getOne(depsB, id)).json();
+      const missingBody = await (
+        await getOne(depsB, crypto.randomUUID())
+      ).json();
+      expect(foreignBody).toEqual(missingBody);
+      expect(foreignBody).toEqual({
+        error: { code: "NOT_FOUND", message: "Not found." },
+      });
+
       // And the reverse: A's row is absent from B's lists entirely.
       const listB = (await (await get(depsB, "/api/tasks")).json()) as { tasks: TaskBody[] };
       expect(listB.tasks).toEqual([]);

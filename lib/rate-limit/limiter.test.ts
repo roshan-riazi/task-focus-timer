@@ -116,4 +116,12 @@ describe("AUTH_RATE_LIMITS (spec §8.1 endpoints)", () => {
       3,
     );
   });
+
+  it("throttles account deletion tightly (issue 18: destructive, cookie-authed)", () => {
+    // Nobody legitimately deletes several accounts per hour from one IP,
+    // so the ceiling only bites automated abuse of a stolen session.
+    expect(AUTH_RATE_LIMITS["account:delete"].limit).toBeGreaterThan(0);
+    expect(AUTH_RATE_LIMITS["account:delete"].limit).toBeLessThanOrEqual(10);
+    expect(AUTH_RATE_LIMITS["account:delete"].windowMs).toBeGreaterThan(0);
+  });
 });

@@ -88,6 +88,17 @@ export const resetPasswordSchema = z.object({
   password: passwordSchema,
 });
 
+/**
+ * Spec §8.1: account deletion requires explicit confirmation. The literal
+ * lives server-side (not just client copy) so a bare DELETE request without
+ * it fails validation — the UI asks the user to type DELETE.
+ */
+export const deleteAccountSchema = z.object({
+  confirmation: z.literal("DELETE", {
+    error: "Type DELETE to confirm account deletion.",
+  }),
+});
+
 export interface FieldErrors {
   [field: string]: string[];
 }

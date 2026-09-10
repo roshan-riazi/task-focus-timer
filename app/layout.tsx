@@ -96,6 +96,19 @@ export default async function RootLayout({
           )}
           {children}
         </main>
+        <footer className="border-t">
+          <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-4 text-sm opacity-80">
+            <span>FocusFlow — personal focus timer.</span>
+            <nav aria-label="Legal">
+              <Link
+                href="/privacy"
+                className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                Privacy notice
+              </Link>
+            </nav>
+          </div>
+        </footer>
       </body>
     </html>
   );

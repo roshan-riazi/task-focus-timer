@@ -66,6 +66,13 @@ export function RegisterForm() {
           Sign in
         </Link>
       </p>
+      <p className="text-sm opacity-80">
+        By creating an account you agree to the{" "}
+        <Link href="/privacy" className="underline underline-offset-2">
+          privacy notice
+        </Link>
+        .
+      </p>
     </form>
   );
 }
