@@ -1,4 +1,4 @@
-Status: in progress
+Status: done
 Milestone: 3
 Depends on: 09, 12
 
@@ -49,3 +49,10 @@ channel.
   whole object where per-field fallback is wanted). Manual M3 exit
   remains: audible check (tone, volume, distinctness). Awaiting CI;
   merge only when green.
+- 2026-09-10: done — merged via PR #26 (merge commit `a237b05`; all 8 CI
+  gates green: typecheck, lint, audit, migrate, vitest, playwright,
+  gitleaks, ci-required). Carry-over for issue 16: `components/settings/api`
+  GET client + `AlarmPreviewButton` are ready to reuse in the settings
+  form (preset preview + volume + timezone). Follow-up: permission-prompt
+  UX lives with the issue-16 form (timer degrades gracefully until then).
+  Manual M3 exit remains: audible check (tone, volume, distinctness).
