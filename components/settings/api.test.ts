@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getSettings, SettingsApiError } from "./api";
+import {
+  getSettings,
+  SettingsApiError,
+  updateSettings,
+} from "./api";
 
 /**
  * Seam 4 (unit, hermetic): typed settings client for issue 13 (spec §11.4,
@@ -78,6 +82,62 @@ describe("getSettings (issue 13)", () => {
       }),
     );
     const err = await getSettings().catch((e) => e);
+    expect(err).toBeInstanceOf(SettingsApiError);
+    expect((err as SettingsApiError).code).toBe("NETWORK_ERROR");
+  });
+});
+
+describe("updateSettings (issue 16)", () => {
+  it("PATCHes the settings envelope and returns the saved row", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(sampleSettings({ soundVolume: 40 }), 200),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const saved = await updateSettings({ soundVolume: 40 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/settings",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(String(init.body)).toContain('"soundVolume":40');
+    expect(saved.soundVolume).toBe(40);
+  });
+
+  it("maps validation 400s onto code + field map", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Check the highlighted fields and try again.",
+              fields: { soundVolume: ["Must be at most 100."] },
+            },
+          },
+          400,
+        ),
+      ),
+    );
+    const failure = await updateSettings({ soundVolume: 140 }).catch((e) => e);
+    expect(failure).toBeInstanceOf(SettingsApiError);
+    expect((failure as SettingsApiError).code).toBe("VALIDATION_ERROR");
+    expect((failure as SettingsApiError).fields).toEqual({
+      soundVolume: ["Must be at most 100."],
+    });
+  });
+
+  it("throws NETWORK_ERROR when fetch rejects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    const err = await updateSettings({ soundVolume: 40 }).catch((e) => e);
     expect(err).toBeInstanceOf(SettingsApiError);
     expect((err as SettingsApiError).code).toBe("NETWORK_ERROR");
   });
