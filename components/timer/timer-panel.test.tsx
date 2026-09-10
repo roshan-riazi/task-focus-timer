@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const realFetch = globalThis.fetch;
@@ -372,8 +378,46 @@ describe("<TimerPanel /> (issue 12)", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/complet/i);
   });
 
-  it("shows only the dialog while expiry confirmation is pending", async () => {
-    // Spec §8.4: beyond the grace window the interval finalizes ONLY via
+  it("describes the expiry dialog and traps Tab inside it (WCAG 2.1.2)", async () => {
+    mockNow(T0 + 1_500_000 + 7_200_000);
+    const expired = sampleSession();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(
+          sampleCurrent({
+            session: expired,
+            pendingConfirmation: { session: expired, overdueSeconds: 7200 },
+          }),
+          200,
+        ),
+      ),
+    );
+    render(<TimerPanel selectedTask={null} tickMs={60_000} />);
+    const dialog = await screen.findByRole("dialog", {
+      name: /finish the expired interval/i,
+    });
+    // The explanatory copy is programmatically linked (1.3.1).
+    expect(dialog).toHaveAttribute("aria-describedby", "timer-confirm-desc");
+    expect(
+      document.getElementById("timer-confirm-desc"),
+    ).not.toBeNull();
+
+    const complete = within(dialog).getByRole("button", {
+      name: /complete.*count 25 min/i,
+    });
+    const discard = within(dialog).getByRole("button", { name: /^discard$/i });
+    await waitFor(() => expect(complete).toHaveFocus());
+    // Tab on the last control wraps to the first…
+    discard.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(complete).toHaveFocus();
+    // …and Shift+Tab on the first wraps to the last.
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(discard).toHaveFocus();
+  });
+
+  it("shows only the dialog while expiry confirmation is pending", async () => {    // Spec §8.4: beyond the grace window the interval finalizes ONLY via
     // explicit Complete/Discard — no background transition may slip in.
     mockNow(T0 + 1_500_000 + 7_200_000);
     const expired = sampleSession();

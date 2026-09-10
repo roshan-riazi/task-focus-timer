@@ -91,19 +91,18 @@ describe("<Workspace /> focus page (slice 5)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps tasks first in DOM order with the timer visually first on mobile", async () => {
+  it("keeps DOM order matching visual order with the timer first", async () => {
     stubList([taskRow()]);
     render(<Workspace />);
     const tasks = await screen.findByRole("complementary", { name: /^tasks$/i });
     const timer = screen.getByRole("region", { name: /^focus/i });
+    // WCAG 1.3.2/2.4.3: keyboard Tab meets the visible timer before the task
+    // list on narrow screens, so the timer leads in DOM order too.
     expect(
-      tasks.compareDocumentPosition(timer) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      timer.compareDocumentPosition(tasks) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // Prototype rule (workspace.html): `.timer{order:-1}` below 46rem, so
-    // the timer appears first on narrow screens while DOM order stays
-    // tasks-first for a stable keyboard sequence.
-    expect(timer.className).toMatch(/order-first/);
+    // Desktop keeps the sidebar in the first column via md:order.
+    expect(timer.className).toMatch(/md:order-2/);
   });
 
   it("exposes the task list as a complementary landmark", async () => {

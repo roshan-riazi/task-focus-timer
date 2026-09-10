@@ -26,12 +26,12 @@ export function AuthField({ id, label, errors = [], ...props }: AuthFieldProps) 
         className={cn(
           "h-10 rounded-md border bg-background px-3 text-sm",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-          invalid && "border-red-500",
+          invalid && "border-red-600 dark:border-red-400",
         )}
         {...props}
       />
       {invalid && (
-        <p id={errorId} role="alert" className="text-sm text-red-500">
+        <p id={errorId} role="alert" className="text-sm text-red-700 dark:text-red-400">
           {errors.join(" ")}
         </p>
       )}

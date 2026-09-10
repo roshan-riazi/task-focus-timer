@@ -13,6 +13,13 @@ interface AlarmPreviewButtonProps {
   moment?: AlarmMoment;
 }
 
+const PRESET_LABELS: Record<SoundPreset, string> = {
+  chime: "Chime",
+  bell: "Bell",
+  pulse: "Pulse",
+  gong: "Gong",
+};
+
 /**
  * In-settings alarm preview (spec §8.7, prototype `settings.html` Preview
  * button, issue 13).
@@ -65,7 +72,7 @@ export function AlarmPreviewButton({
         disabled={busy}
         onClick={() => void onPreview()}
       >
-        Preview {preset}
+        Preview {PRESET_LABELS[preset]}
       </Button>
       {notice && <span role="status">{notice}</span>}
     </span>

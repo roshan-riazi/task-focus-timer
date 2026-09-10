@@ -41,7 +41,7 @@ export function LoginForm() {
         }}
       >
         {formError && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             {formError}
           </p>
         )}
@@ -68,10 +68,15 @@ export function LoginForm() {
         </Button>
       </form>
       <p className="text-sm opacity-80">
-        <Link href="/forgot-password">Forgot your password?</Link>
+        <Link href="/forgot-password" className="underline underline-offset-2">
+          Forgot your password?
+        </Link>
       </p>
       <p className="text-sm opacity-80">
-        New here? <Link href="/register">Create an account</Link>
+        New here?{" "}
+        <Link href="/register" className="underline underline-offset-2">
+          Create an account
+        </Link>
       </p>
     </div>
   );

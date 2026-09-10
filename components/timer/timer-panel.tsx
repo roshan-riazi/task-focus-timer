@@ -143,6 +143,7 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
   // Focus return for the expiry dialog (spec §12.3 focus management).
   const returnFocusTo = useRef<Element | null>(null);
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const wasPending = useRef(false);
   // Keyboard continuity after actions (see the retention effect below).
   const scopeRef = useRef<HTMLDivElement | null>(null);
@@ -400,6 +401,35 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
     soundForFinalized(result.session);
   }
 
+  /**
+   * Keep Tab inside the expiry dialog while it is open (WCAG 2.1.2/2.4.3:
+   * a modal must trap focus). There is intentionally no Escape dismiss —
+   * the interval finalizes ONLY via explicit Complete/Discard (spec §8.4).
+   */
+  function trapDialogTab(event: React.KeyboardEvent) {
+    if (event.key !== "Tab") return;
+    const root = dialogRef.current;
+    if (!root) return;
+    const items = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        "button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])",
+      ),
+    );
+    if (items.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   /** 409s mean another writer moved first — resync instead of guessing. */
   async function resyncAfterConflict() {
     try {
@@ -452,7 +482,7 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
         <p role="status">{announcement}</p>
         {error && (
           <div className="grid gap-2">
-            <p role="alert" className="text-sm text-red-500">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
               {error}
             </p>
             <Button
@@ -478,7 +508,7 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
         <p role="status">{announcement}</p>
         {error && (
           <div className="grid gap-2">
-            <p role="alert" className="text-sm text-red-500">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
               {error}
             </p>
             <div>
@@ -573,20 +603,23 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
       <div ref={scopeRef} className="grid gap-3">
         <p role="status">{announcement}</p>
         {error && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             {error}
           </p>
         )}
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="timer-confirm-heading"
+          aria-describedby="timer-confirm-desc"
+          onKeyDown={trapDialogTab}
           className="grid gap-3 rounded-md border p-4"
         >
           <h2 id="timer-confirm-heading" className="text-base font-semibold">
             Finish the expired interval?
           </h2>
-          <p className="text-sm">
+          <p id="timer-confirm-desc" className="text-sm">
             Your {plannedMinutes(pending.session)}-minute{" "}
             {INTERVAL_LABELS[pending.session.intervalType].toLowerCase()} ended
             over 60 minutes ago. Count its{" "}
@@ -637,7 +670,7 @@ export function TimerPanel({ selectedTask = null, tickMs = 1000 }: TimerPanelPro
     <div ref={scopeRef} className="grid gap-3">
       <p role="status">{announcement}</p>
       {error && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {error}
         </p>
       )}

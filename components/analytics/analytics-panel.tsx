@@ -140,7 +140,7 @@ export function AnalyticsPanel() {
       {loading && <p role="status">Loading analytics…</p>}
       {error && (
         <div className="grid gap-2">
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             {error}
           </p>
           <div>
@@ -156,7 +156,7 @@ export function AnalyticsPanel() {
           <h2 className="text-base font-semibold">{heading}</h2>
 
           {isEmpty(summary) && (
-            <p>
+            <p role="status">
               No completed focus yet in this period — complete a focus
               interval and it shows up here.
             </p>
@@ -253,7 +253,7 @@ export function AnalyticsPanel() {
                 })}
               </svg>
               <div
-                className="min-w-0 overflow-x-auto rounded-md border"
+                className="min-w-0 overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 tabIndex={0}
                 role="region"
                 aria-label="Daily focus minutes (scrollable table)"
@@ -294,14 +294,14 @@ export function AnalyticsPanel() {
               By task
             </h3>
             {summary.byTask.length === 0 ? (
-              <p>
+              <p role="status">
                 {period === "today"
                   ? "No completed tasks today yet — complete a task and it shows up here."
                   : "No completed tasks this week yet — complete a task and it shows up here."}
               </p>
             ) : (
               <div
-                className="min-w-0 overflow-x-auto rounded-md border"
+                className="min-w-0 overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 tabIndex={0}
                 role="region"
                 aria-label="Focus minutes by task (scrollable table)"
@@ -350,7 +350,7 @@ export function AnalyticsPanel() {
                 By category
               </h3>
               <div
-                className="min-w-0 overflow-x-auto rounded-md border"
+                className="min-w-0 overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 tabIndex={0}
                 role="region"
                 aria-label="Focus minutes by category (scrollable table)"
@@ -392,11 +392,17 @@ export function AnalyticsPanel() {
               </div>
             </section>
           ) : summary.byTask.length > 0 ? (
-            <section aria-labelledby="by-category-heading" className="grid gap-2">
-              <h3 id="by-category-heading" className="text-sm font-semibold">
+            <section
+              aria-labelledby="by-category-empty-heading"
+              className="grid gap-2"
+            >
+              <h3
+                id="by-category-empty-heading"
+                className="text-sm font-semibold"
+              >
                 By category
               </h3>
-              <p>
+              <p role="status">
                 No categories with focus here yet — add a category to a task
                 and its focus shows up here.
               </p>

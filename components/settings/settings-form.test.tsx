@@ -133,6 +133,49 @@ describe("<SettingsForm /> (spec §8.7)", () => {
     expect(focus.getAttribute("aria-describedby")).toContain(alert.id);
   });
 
+  it("associates toggle field errors with their checkboxes (WCAG 3.3.1)", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return jsonResponse(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "Check the highlighted fields and try again.",
+                fields: {
+                  autoStartBreaks: ["Automatic breaks need a valid cycle."],
+                },
+              },
+            },
+            400,
+          );
+        }
+        return jsonResponse(sampleSettings(), 200);
+      }),
+    );
+    render(<SettingsForm />);
+    await screen.findByRole("button", { name: /save settings/i });
+    await user.click(screen.getByRole("button", { name: /save settings/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/automatic breaks/i);
+    const box = screen.getByLabelText(/start breaks automatically/i);
+    expect(box).toHaveAttribute("aria-invalid", "true");
+    expect(box.getAttribute("aria-describedby")).toContain(alert.id);
+  });
+
+  it("announces the volume with its percent unit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(sampleSettings(), 200)),
+    );
+    render(<SettingsForm />);
+    await screen.findByRole("button", { name: /save settings/i });
+    expect(screen.getByText("80%")).toBeInTheDocument();
+  });
+
   it("previews the selected preset at the set volume", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

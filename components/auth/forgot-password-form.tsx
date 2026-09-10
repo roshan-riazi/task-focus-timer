@@ -34,7 +34,7 @@ export function ForgotPasswordForm() {
       }}
     >
       {formError && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {formError}
         </p>
       )}
@@ -51,7 +51,9 @@ export function ForgotPasswordForm() {
         {pending ? "Sending…" : "Send reset link"}
       </Button>
       <p className="text-sm opacity-80">
-        <Link href="/login">Back to sign in</Link>
+        <Link href="/login" className="underline underline-offset-2">
+          Back to sign in
+        </Link>
       </p>
     </form>
   );

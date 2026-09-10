@@ -38,7 +38,7 @@ export function VerifyEmailForm() {
 
   if (state === "missing") {
     return (
-      <p role="alert" className="max-w-sm text-sm text-red-500">
+      <p role="alert" className="max-w-sm text-sm text-red-700 dark:text-red-400">
         This verification link is missing its token. Ask for a new one from
         the reminder banner after signing in.
       </p>
@@ -47,25 +47,36 @@ export function VerifyEmailForm() {
 
   return (
     <div className="grid max-w-sm gap-4" aria-live="polite">
-      {state === "verifying" && <p className="text-sm">Verifying…</p>}
+      {state === "verifying" && (
+        <p role="status" className="text-sm">
+          Verifying…
+        </p>
+      )}
       {state === "verified" && (
         <>
           <p role="status" className="text-sm">
             Email verified. The reminder is gone — welcome in.
           </p>
           <p className="text-sm opacity-80">
-            <Link href="/login">Sign in to start focusing</Link>
+            <Link
+              href="/login"
+              className="underline underline-offset-2"
+            >
+              Sign in to start focusing
+            </Link>
           </p>
         </>
       )}
       {state === "invalid" && (
         <>
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-red-700 dark:text-red-400">
             This link is invalid or has expired. Sign in and use the reminder
             banner to get a fresh one.
           </p>
           <p className="text-sm opacity-80">
-            <Link href="/login">Sign in</Link>
+            <Link href="/login" className="underline underline-offset-2">
+              Sign in
+            </Link>
           </p>
         </>
       )}

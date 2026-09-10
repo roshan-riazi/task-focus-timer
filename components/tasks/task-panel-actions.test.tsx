@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const realFetch = globalThis.fetch;
@@ -170,7 +170,12 @@ describe("<TaskPanel /> row actions (slice 4)", () => {
     );
     await screen.findByText(/reopened/i);
     expect(screen.getByText(/no completed tasks yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/reopened/i);
+    // The mutation notice announces (its own status region — the empty
+    // state carries a second one, so match by announced text).
+    const statuses = screen.getAllByRole("status");
+    expect(
+      statuses.some((region) => /reopened/i.test(region.textContent ?? "")),
+    ).toBe(true);
   });
 
   it("archives from Active and unarchives from Archived", async () => {
@@ -376,5 +381,62 @@ describe("<TaskPanel /> row actions (slice 4)", () => {
     await screen.findByText(/completed\./i);
     expect(window.localStorage.getItem(SELECTED_TASK_KEY)).toBeNull();
     expect(onSelectionChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("returns focus to the opener when edit is cancelled (WCAG 2.4.3)", async () => {
+    const user = userEvent.setup();
+    stubCrudServer(SEED());
+    render(<TaskPanel />);
+    await screen.findByText(/write launch notes/i);
+
+    const item = rowItem("Write launch notes");
+    await user.click(within(item).getByRole("button", { name: /edit/i }));
+    expect(
+      within(item).getByRole("textbox", { name: /^title$/i }),
+    ).toHaveFocus();
+    await user.click(within(item).getByRole("button", { name: /cancel/i }));
+    expect(
+      within(rowItem("Write launch notes")).getByRole("button", {
+        name: /edit write launch notes/i,
+      }),
+    ).toHaveFocus();
+  });
+
+  it("returns focus to the opener when the delete confirm is dismissed (WCAG 2.4.3)", async () => {
+    const user = userEvent.setup();
+    stubCrudServer(SEED());
+    render(<TaskPanel />);
+    await screen.findByText(/write launch notes/i);
+
+    const item = rowItem("Write launch notes");
+    await user.click(within(item).getByRole("button", { name: /delete/i }));
+    expect(
+      within(item).getByRole("button", { name: /confirm delete/i }),
+    ).toHaveFocus();
+    await user.click(within(item).getByRole("button", { name: /keep/i }));
+    expect(
+      within(rowItem("Write launch notes")).getByRole("button", {
+        name: /delete write launch notes/i,
+      }),
+    ).toHaveFocus();
+  });
+
+  it("recovers focus to quick-add after a row unmounts (WCAG 2.4.3)", async () => {
+    const user = userEvent.setup();
+    stubCrudServer(SEED());
+    render(<TaskPanel />);
+    await screen.findByText(/write launch notes/i);
+
+    await user.click(
+      within(rowItem("Write launch notes")).getByRole("button", {
+        name: /complete/i,
+      }),
+    );
+    await screen.findByText(/completed\./i);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: /new task title/i }),
+      ).toHaveFocus(),
+    );
   });
 });

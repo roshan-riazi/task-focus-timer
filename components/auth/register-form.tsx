@@ -30,7 +30,7 @@ export function RegisterForm() {
       }}
     >
       {formError && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {formError}
         </p>
       )}
@@ -53,7 +53,7 @@ export function RegisterForm() {
         errors={fieldErrors.password}
       />
       {fieldErrors.timezone && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
           {fieldErrors.timezone.join(" ")}
         </p>
       )}
@@ -61,7 +61,10 @@ export function RegisterForm() {
         {pending ? "Creating account…" : "Create account"}
       </Button>
       <p className="text-sm opacity-80">
-        Already have an account? <Link href="/login">Sign in</Link>
+        Already have an account?{" "}
+        <Link href="/login" className="underline underline-offset-2">
+          Sign in
+        </Link>
       </p>
     </form>
   );

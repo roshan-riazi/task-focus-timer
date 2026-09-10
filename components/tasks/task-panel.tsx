@@ -96,6 +96,12 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
   );
   const announcedSelection = useRef<string | null>(null);
   const validatedSelection = useRef(false);
+  // Keyboard continuity after mutations (mirrors the timer retention
+  // pattern): every refresh unmounts the row list, so an activated control
+  // that unmounts drops focus to <body> — recover it to the stable
+  // quick-add input instead of restarting tab order at the top (2.4.3).
+  const scopeRef = useRef<HTMLElement | null>(null);
+  const expectFocusMove = useRef(false);
 
   useEffect(() => {
     if (view?.key === key) return;
@@ -210,8 +216,30 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
   }
 
   function refresh() {
+    expectFocusMove.current = true;
     setReloadToken((token) => token + 1);
   }
+
+  // Recover keyboard focus after the row list remounts. Only fires when a
+  // refresh was requested and focus was actually lost to <body>; background
+  // reloads that keep focus elsewhere never yank it.
+  useEffect(() => {
+    if (!expectFocusMove.current) return;
+    if (rows === null) return;
+    expectFocusMove.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const quickAdd =
+      scopeRef.current?.querySelector(`#${TITLE_INPUT_ID}`);
+    if (quickAdd instanceof HTMLElement) {
+      quickAdd.focus();
+      return;
+    }
+    const next = scopeRef.current?.querySelector("button:not(:disabled)");
+    if (next instanceof HTMLButtonElement) next.focus();
+    // `rows` gates on the remount; `reloadToken` re-arms per refresh while
+    // filter switches (same reload path, no refresh request) stay silent.
+  }, [rows, reloadToken]);
 
   // Every mutation below throws `TaskApiError` on failure (the row displays
   // it inline) and refetches only on success, so a failure — including the
@@ -351,7 +379,11 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
     // min-w-0: grid items floor at descendant min-content by default and
     // would prize the track wider than 320px viewports (spec §12.4); every
     // inner row already wraps, so shrinking to the track is safe.
-    <aside aria-labelledby="tasks-heading" className="min-w-0 rounded-md border p-4">
+    <aside
+      ref={scopeRef}
+      aria-labelledby="tasks-heading"
+      className="min-w-0 rounded-md border p-4"
+    >
       <h2 id="tasks-heading" className="text-base font-semibold">
         Tasks
       </h2>
@@ -361,14 +393,13 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
         aria-label="Quick add"
       >
         <label htmlFor={TITLE_INPUT_ID} className="text-sm font-medium">
-          Quick add
+          New task title
         </label>
         <div className="flex gap-2">
           <input
             id={TITLE_INPUT_ID}
             type="text"
             placeholder="New task title"
-            aria-label="New task title"
             maxLength={200}
             autoComplete="off"
             value={title}
@@ -382,7 +413,11 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
           </Button>
         </div>
         {invalid && (
-          <p id={TITLE_ERROR_ID} role="alert" className="text-sm text-red-500">
+          <p
+            id={TITLE_ERROR_ID}
+            role="alert"
+            className="text-sm text-red-700 dark:text-red-400"
+          >
             {titleErrors.join(" ")}
           </p>
         )}
@@ -415,7 +450,7 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
         {!loading && notice && <p role="status">{notice}</p>}
         {loadError && (
           <div className="grid gap-2">
-            <p role="alert" className="text-sm text-red-500">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
               {loadError}
             </p>
             <Button type="button" variant="ghost" onClick={refresh}>
@@ -424,7 +459,7 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
           </div>
         )}
         {!loading && !loadError && rows !== null && rows.length === 0 && (
-          <p>{EMPTY_COPY[filter]}</p>
+          <p role="status">{EMPTY_COPY[filter]}</p>
         )}
         {!loading && !loadError && rows !== null && rows.length > 0 && (
           <>
@@ -458,7 +493,10 @@ export function TaskPanel({ onSelectionChange }: TaskPanelProps = {}) {
             {nextCursor !== null && (
               <div className="mt-3 grid gap-2">
                 {moreError && (
-                  <p role="alert" className="text-sm text-red-500">
+                  <p
+                    role="alert"
+                    className="text-sm text-red-700 dark:text-red-400"
+                  >
                     {moreError}
                   </p>
                 )}
