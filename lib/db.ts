@@ -17,7 +17,8 @@ function createClient(): PrismaClient {
 /**
  * Shared Prisma client (Prisma is the only data-access path per
  * SYSTEM_DESIGN §1). Uses a driver adapter over `DATABASE_URL`, which points
- * at Neon in production and the local container Postgres elsewhere.
+ * at the container Postgres `db` service on VPS and locally (ADR-0005:
+ * no Neon).
  */
 export const db: PrismaClient = globalForPrisma.db ?? createClient();
 

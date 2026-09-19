@@ -9,10 +9,10 @@ Sources: `docs/product/PRODUCT_SPEC.md` (product authority), `docs/adr/`
 
 - Single Next.js App Router app (Node.js 26 runtime for all timer/auth routes;
   no Edge-only APIs, per portability).
-- One Neon Postgres database via `DATABASE_URL` (Neon cloud in prod, container
-  Postgres locally / on VPS). Prisma is the only data-access path.
-- One artifact, three targets: Vercel (primary) + portable Docker
-  (`output: standalone`, `next start`) on own VPS + local Debian 13.
+- One container Postgres 16 database via `DATABASE_URL` (VPS `db` service in
+  prod, same container locally). Prisma is the only data-access path.
+- One artifact, two targets: portable Docker (`output: standalone`,
+  `next start`) on own VPS (production) + local compose (dev).
 - No background workers, no WebSockets. Expired timers reconcile lazily on the
   next server interaction (spec §8.4 + 60-minute confirm rule).
 
@@ -135,11 +135,14 @@ running|paused --cancel--> cancelled        # incl. Discard from confirm dialog
 
 - Env config only: `DATABASE_URL`, `AUTH_SECRET`, email provider keys, error
   monitoring DSN. Secrets never in source (Gitleaks enforced).
-- Migrations: `prisma migrate deploy` in CI and container entrypoint;
-  repeatable, forward-only.
-- Health: `GET /api/health` checks DB reachability, returns no user data.
-- Backups: Neon automated backups (+ `pg_dump` path on VPS); live purge
-  immediate, backup expiry 30 days — restore procedure goes in RUNBOOK.
+- Migrations: `prisma migrate deploy` in CI and in the container entrypoint
+  (`docker/entrypoint.sh`); repeatable, forward-only.
+- Health: `GET /api/health` checks DB reachability, returns no user data;
+  the compose `app` service healthchecks it and the host monitors it via
+  `scripts/vps-health-monitor.sh`.
+- Backups: scheduled `pg_dump` artifacts with 30-day expiry
+  (`scripts/vps-backup.sh`, `BACKUP_RETENTION_DAYS`); live purge immediate,
+  backup expiry 30 days — restore procedure goes in RUNBOOK §4.
 - Observability: request-ID structured logs + scrubbed error reports; **no**
   product-analytics telemetry (suggested §4 metrics are DB aggregates only).
   No task titles/notes in any log, report, or telemetry.
@@ -155,7 +158,7 @@ running|paused --cancel--> cancelled        # incl. Discard from confirm dialog
 ## 10. Proposed defaults needing owner sign-off
 
 1. Email provider = Resend (any SMTP-compatible satisfies the design).
-2. Co-locate Vercel + Neon in EU (configurable; no residency lock).
+2. VPS region = owner-chosen (no residency lock; single VPS holds app + DB).
 3. Fractional task `position` with renormalization.
 4. `Idempotency-Key` header + opaque `(started_at, id)` cursor (codes above).
 5. Sentry free-tier for scrubbed errors (any equivalent with scrubbing works).
