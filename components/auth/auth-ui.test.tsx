@@ -102,7 +102,7 @@ describe("<LoginForm /> (field-associated errors, spec §12.3)", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("navigates home on success", async () => {
+  it("navigates to the workspace on success", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -116,7 +116,8 @@ describe("<LoginForm /> (field-associated errors, spec §12.3)", () => {
     await user.type(screen.getByLabelText(/password/i), "s3cure-password");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
-    expect(push).toHaveBeenCalledWith("/");
+    // Spec §7.1: sign in → the focus workspace, not the public index.
+    expect(push).toHaveBeenCalledWith("/app");
     expect(refresh).toHaveBeenCalled();
   });
 });

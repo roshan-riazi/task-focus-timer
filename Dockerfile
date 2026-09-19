@@ -5,12 +5,14 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && corepack prepare pnpm@10.17.0 --activate && pnpm install --frozen-lockfile
+# Node ≥25 ships without Corepack (removed upstream): install the pinned pnpm
+# via npm instead (`packageManager: pnpm@10.17.0`).
+RUN npm install -g pnpm@10.17.0 && pnpm install --frozen-lockfile
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && corepack prepare pnpm@10.17.0 --activate && pnpm exec prisma generate && pnpm build
+RUN npm install -g pnpm@10.17.0 && pnpm exec prisma generate && pnpm build
 
 FROM base AS runner
 ENV NODE_ENV=production

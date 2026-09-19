@@ -124,6 +124,18 @@ describe("resolveEmailProvider (env-pluggable, Resend default)", () => {
       resolveEmailProvider({ EMAIL_PROVIDER: "carrier-pigeon" }),
     ).toThrow(/unknown email provider/i);
   });
+
+  it("treats blank provider/From as unset (compose passes empty strings)", () => {
+    // docker-compose `environment:` always sets the key; an unconfigured
+    // host yields "" rather than undefined. Blank must fall back, not 500.
+    const warnings: string[] = [];
+    const provider = resolveEmailProvider(
+      { EMAIL_PROVIDER: "", EMAIL_FROM: "" },
+      { onWarn: (line: string) => warnings.push(line) },
+    );
+    expect(provider.name).toBe("console");
+    expect(warnings.join("\n")).toMatch(/EMAIL_API_KEY/i);
+  });
 });
 
 describe("email templates (English-only, i18n-ready strings)", () => {

@@ -20,12 +20,15 @@ HEALTH="$(curl -fsS "$APP_URL/api/health")"
 echo "$HEALTH" | grep -q '"status":"ok"' || fail "health envelope not ok: $HEALTH"
 pass "health 200 with db:up"
 
+# Register ignores failure (user may already exist from a prior run), then
+# login unconditionally: register sets no session cookie, so a bare
+# register-or-login fallback leaves later calls unauthenticated (401).
 curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json' -H "Origin: $APP_URL" \
   -d "{\"email\":\"$SMOKE_EMAIL\",\"password\":\"$SMOKE_PASSWORD\"}" \
-  "$APP_URL/api/auth/register" >/dev/null 2>&1 \
-  || curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json' -H "Origin: $APP_URL" \
-    -d "{\"email\":\"$SMOKE_EMAIL\",\"password\":\"$SMOKE_PASSWORD\"}" \
-    "$APP_URL/api/auth/login" >/dev/null || fail "register/login"
+  "$APP_URL/api/auth/register" >/dev/null 2>&1 || true
+curl -fsS -c "$COOKIE_JAR" -H 'Content-Type: application/json' -H "Origin: $APP_URL" \
+  -d "{\"email\":\"$SMOKE_EMAIL\",\"password\":\"$SMOKE_PASSWORD\"}" \
+  "$APP_URL/api/auth/login" >/dev/null || fail "register/login"
 pass "login (register-or-login)"
 
 # 1-minute focus: shrink the focus duration for this user, then start/complete.

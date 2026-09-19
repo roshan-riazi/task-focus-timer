@@ -2,8 +2,9 @@ name: CI
 
 # Branch protection (repo Settings → Branches → main): require the
 # `ci-required` check plus every gate job (typecheck, lint, audit, migrate,
-# vitest, playwright, gitleaks) so a deliberately failing commit cannot merge.
-# All jobs are fail-closed: no continue-on-error, no shell bypasses.
+# vitest, playwright, gitleaks, docker) so a deliberately failing commit
+# cannot merge. All jobs are fail-closed: no continue-on-error, no shell
+# bypasses.
 
 on:
   push:
@@ -179,9 +180,24 @@ jobs:
           # free at gitleaks.io — add as a secret if this ever moves to an org).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      # Build-only (issue 19 follow-up): proves the VPS Dockerfile +
+      # entrypoint still build without pushing anywhere (no registry login,
+      # no push). Keeps the image from rotting between VPS deploys.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+
   required:
     name: ci-required
     runs-on: ubuntu-latest
-    needs: [typecheck, lint, audit, migrate, vitest, playwright, gitleaks]
+    needs: [typecheck, lint, audit, migrate, vitest, playwright, gitleaks, docker]
     steps:
       - run: echo "All CI gates passed."

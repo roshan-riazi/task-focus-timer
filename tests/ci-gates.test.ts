@@ -166,3 +166,20 @@ describe("CI gates (issue 02, slice 3: playwright + gitleaks + dependabot)", () 
     expect(dependabot).toContain("weekly");
   });
 });
+
+describe("CI gates (issue 19 follow-up: docker image build)", () => {
+  it("builds the VPS Docker image so the Dockerfile cannot rot silently", () => {
+    const workflow = readWorkflow();
+    const dockerJob = jobBlock(workflow, "docker");
+    expect(dockerJob).toContain("docker/build");
+    expect(dockerJob).toContain("Dockerfile");
+    // Build-only gate: never pushes (no registry push, no registry login).
+    expect(dockerJob).not.toContain("docker/login-action");
+    expect(dockerJob).not.toMatch(/push:\s*true/);
+  });
+
+  it("requires the docker build in the merge gate", () => {
+    const requiredJob = jobBlock(readWorkflow(), "required");
+    expect(requiredJob).toContain("docker");
+  });
+});
