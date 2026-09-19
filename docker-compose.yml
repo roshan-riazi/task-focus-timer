@@ -1,26 +1,46 @@
 services:
   app:
+    # VPS production image (issue 19, RUNBOOK §2): pinned by git sha via
+    # IMAGE_TAG (`scripts/vps-deploy.sh` builds `focusflow:<sha>`). `build`
+    # stays so a fresh host can build locally; registry hosts set `image`
+    # to the pushed tag and skip the build.
+    image: "focusflow:${IMAGE_TAG:-latest}"
     build: .
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: "postgres://focusflow:focusflow@db:5432/focusflow"
+      DATABASE_URL: "${DATABASE_URL:-postgres://focusflow:focusflow@db:5432/focusflow}"
       AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET in your shell or a .env file — never commit secrets.}"
+      APP_URL: "${APP_URL:-http://localhost:3000}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-}"
+      EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-}"
+      ERROR_DSN: "${ERROR_DSN:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
   db:
     image: postgres:16-bookworm
     environment:
       POSTGRES_USER: focusflow
-      POSTGRES_PASSWORD: focusflow
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-focusflow}"
       POSTGRES_DB: focusflow
     ports:
       - "5432:5432"
     volumes:
       - focusflow-pgdata:/var/lib/postgresql/data
+      # Backup artifacts (RUNBOOK §4): host-mounted so `vps-backup.sh`
+      # pg_dump files survive container recreation with 30-day expiry.
+      - ${BACKUP_DIR:-./backups}:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U focusflow -d focusflow"]
       interval: 5s
