@@ -128,13 +128,17 @@ test("register → use-before-verify → verify → login → reset, keyboard-on
       page.getByRole("button", { name: /^sign in$/i }),
     ).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL("http://127.0.0.1:3000/");
+    // Spec §7.1: sign in lands on the focus workspace (nag lives in the
+    // root layout, so it stays visible there while unverified).
+    await expect(page).toHaveURL("http://127.0.0.1:3000/app");
 
-    // --- Use-before-verify: shell usable, nag visible ---
+    // --- Use-before-verify: workspace usable, nag visible ---
     await expect(
-      page.getByRole("heading", { name: "Focus on one task at a time" }),
+      page.getByRole("heading", { name: /^focus$/i }),
     ).toBeVisible();
-    await expect(page.getByRole("status")).toContainText(/verify your email/i);
+    // Text locator: /app also hosts the timer's unnamed status live region,
+    // and Chromium doesn't expose computed names on status regions.
+    await expect(page.getByText(/verify your email/i)).toBeVisible();
 
     // --- Follow the emailed verification link ---
     const verifyToken = await mailedToken(email, "/verify-email");
@@ -204,15 +208,18 @@ test("register → use-before-verify → verify → login → reset, keyboard-on
     await expect(page).toHaveURL(/\/login\?reset=1/);
     await expect(page.getByRole("status")).toContainText(/password updated/i);
 
-    // --- New password signs in; the nag stays gone ---
+    // --- New password signs in at the workspace; the nag stays gone ---
     await tabTo(page, emailField(page), "email field");
     await page.keyboard.type(email);
     await page.keyboard.press("Tab");
     await page.keyboard.type(newPassword);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL("http://127.0.0.1:3000/");
-    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(page).toHaveURL("http://127.0.0.1:3000/app");
+    await expect(
+      page.getByRole("heading", { name: /^focus$/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/verify your email/i)).toHaveCount(0);
   } finally {
     // Cascade removes sessions, tokens, and settings with the user.
     if (userId) await db.user.delete({ where: { id: userId } });

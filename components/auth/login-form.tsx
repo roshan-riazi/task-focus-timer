@@ -15,7 +15,8 @@ export function LoginForm() {
   const { submit, fieldErrors, formError, pending } = useAuthSubmit(
     "/api/auth/login",
     () => {
-      router.push("/");
+      // Spec §7.1 (first use): sign in → the focus workspace.
+      router.push("/app");
       router.refresh();
     },
   );
