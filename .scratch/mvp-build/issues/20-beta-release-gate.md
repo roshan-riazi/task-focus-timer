@@ -1,4 +1,4 @@
-Status: in_review
+Status: done
 Milestone: 5
 Depends on: 10, 12, 14, 16, 17, 18, 19
 
@@ -124,6 +124,11 @@ https://github.com/roshan-riazi/task-focus-timer/actions/runs/35476086139
   browser-trial recorded in issue 19 comments; deletion drill in 18.
 
 ### Owner carry-overs before beta (why `in_review`, not `done`)
+
+WAIVED by owner 2026-09-20 — all three conditions (real-device
+Edge/Safari passes, Sentry canary review in 06, direct 3s/p95
+measurements) explicitly waived; beta ships on automated-matrix +
+smoke evidence. Status set to `done`.
 
 1. Real-device manual passes on the last two stable Edge/Safari
    (+ a mobile Safari/Chrome spot-check) with a dated smoke log.
