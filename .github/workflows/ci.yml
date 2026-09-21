@@ -185,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       # Build-only (issue 19 follow-up): proves the VPS Dockerfile +
       # entrypoint still build without pushing anywhere (no registry login,
       # no push). Keeps the image from rotting between VPS deploys.
