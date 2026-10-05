@@ -1,0 +1,74 @@
+name: Docker Publish
+
+# Trigger: only after CI is green on main (plus manual dispatch).
+# - Listens for `workflow_run` completion of the `CI` workflow on `main`
+#   and proceeds only when `conclusion == success`. This runs the publish
+#   *after* CI instead of in parallel with it.
+# - No `pull_request` / `push` trigger: PRs are validated by `ci.yml` alone
+#   (including its build-only `docker` gate). Merge the PR after CI is green
+#   (branch protection on `ci-required` + auto-merge); the merge runs CI on
+#   `main`, and this workflow publishes once that CI run succeeds.
+# - Dockerfile stages: base -> deps -> builder -> runner (final default
+#   target). No `target:` override so stage cache stays shared with the CI
+#   build-only check and `scripts/vps-deploy.sh` local builds.
+# - VPS flow is unchanged — set REGISTRY=ghcr.io/<owner> to pull these tags
+#   on the host.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-publish-main
+
+jobs:
+  publish:
+    name: publish
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve commit SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            FULL="${{ github.event.workflow_run.head_sha }}"
+          else
+            FULL="$GITHUB_SHA"
+          fi
+          echo "full=$FULL" >> "$GITHUB_OUTPUT"
+          echo "short=$(echo "$FULL" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.sha.outputs.short }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
