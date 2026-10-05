@@ -189,7 +189,7 @@ jobs:
       # Build-only (issue 19 follow-up): proves the VPS Dockerfile +
       # entrypoint still build without pushing anywhere (no registry login,
       # no push). Keeps the image from rotting between VPS deploys.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
