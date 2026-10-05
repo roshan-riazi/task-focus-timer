@@ -59,7 +59,7 @@
     "prisma": "^7.10.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^5.0.3"
   },
   "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only. brace-expansion/fast-uri force dev-chain patches (eslint + prisma dev); braces has no patch (see pnpm-workspace.yaml ignore). Scoped ignores live in pnpm-workspace.yaml (auditConfig is workspace-file-only; package.json entries are inert).",
   "pnpm": {
