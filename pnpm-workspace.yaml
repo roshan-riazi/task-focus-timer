@@ -7,3 +7,9 @@ auditConfig:
   # then drop this entry.
   ignoreGhsas:
     - GHSA-82fw-gwwq-j7x9
+    # GHSA-vfj7-8cjw-p6xm: braces <=3.0.3 stack-exhaustion via deeply nested
+    # patterns. No patched version exists (advisory lists <0.0.0); the only
+    # path in this repo is dev-only (@next/eslint-plugin-next > fast-glob >
+    # micromatch > braces), never user input at runtime. Revisit if upstream
+    # micromatch/fast-glob reroll or the lint chain is replaced.
+    - GHSA-vfj7-8cjw-p6xm

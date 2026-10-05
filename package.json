@@ -31,7 +31,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
-    "next": "^16.0.0",
+    "next": "^16.3.6",
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
@@ -61,7 +61,7 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only. Scoped ignores live in pnpm-workspace.yaml (auditConfig is workspace-file-only; package.json entries are inert).",
+  "//audit-overrides": "Fail-closed audit gate (issue 02): force patched transitives until upstream prisma releases pick them up. mysql2 is unused (postgres-only) and deepmerge-ts is CLI-config merging only. brace-expansion/fast-uri force dev-chain patches (eslint + prisma dev); braces has no patch (see pnpm-workspace.yaml ignore). Scoped ignores live in pnpm-workspace.yaml (auditConfig is workspace-file-only; package.json entries are inert).",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",
@@ -70,7 +70,10 @@
     ],
     "overrides": {
       "mysql2": ">=3.23.1",
-      "deepmerge-ts": ">=8.0.0"
+      "deepmerge-ts": ">=8.0.0",
+      "brace-expansion@<1.1.21": "1.1.21",
+      "brace-expansion@>=4 <5.0.12": "5.0.12",
+      "fast-uri@<3.1.8": "3.1.8"
     }
   }
 }
