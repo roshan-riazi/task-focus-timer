@@ -6,8 +6,12 @@ services:
     # to the pushed tag and skip the build.
     image: "focusflow:${IMAGE_TAG:-latest}"
     build: .
+    # Localhost-only bindings (secure by default): Docker bypasses host
+    # firewalls (UFW) for published ports, so a public mapping here would
+    # expose the service to the internet. An override file cannot narrow
+    # these (Compose unions port lists) — change them here instead.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: "${DATABASE_URL:-postgres://focusflow:focusflow@db:5432/focusflow}"
       AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET in your shell or a .env file — never commit secrets.}"
@@ -35,7 +39,7 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-focusflow}"
       POSTGRES_DB: focusflow
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - focusflow-pgdata:/var/lib/postgresql/data
       # Backup artifacts (RUNBOOK §4): host-mounted so `vps-backup.sh`
