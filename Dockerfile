@@ -16,7 +16,7 @@ RUN npm install -g pnpm@10.17.0 && pnpm exec prisma generate && pnpm build
 
 FROM base AS runner
 ENV NODE_ENV=production
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs nextjs
